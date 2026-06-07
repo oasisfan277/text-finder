@@ -1,5 +1,7 @@
+﻿import zipfile
 from pathlib import Path
 
+from scripts.package_addon import build_package
 from addon.globalPlugins.folderTextFinder.search_engine import (
 	SearchOptions,
 	find_matches,
@@ -39,9 +41,9 @@ def test_whole_word_search_does_not_match_inside_words():
 	assert [result.column for result in results] == [1, 13]
 
 
-def test_case_insensitive_search_uses_casefold():
-	text = "Straße STRASSE"
-	results = list(find_matches(Path("example.txt"), ExtractedText(text), SearchOptions(query="strasse")))
+def test_case_insensitive_search_matches_uppercase_text():
+	text = "MIXED mixed"
+	results = list(find_matches(Path("example.txt"), ExtractedText(text), SearchOptions(query="mixed")))
 	assert len(results) == 2
 
 
@@ -59,3 +61,12 @@ def test_path_from_shell_location_url_decodes_file_url():
 
 def test_render_invisible_text_makes_whitespace_readable():
 	assert render_invisible_text("one  two\tthree\nfour") == "one<space><space>two<tab>three<newline>\nfour"
+
+
+def test_package_contains_manifest_plugin_and_html_guide():
+	package = build_package()
+	with zipfile.ZipFile(package) as archive:
+		names = set(archive.namelist())
+	assert "manifest.ini" in names
+	assert "globalPlugins/folderTextFinder/__init__.py" in names
+	assert "doc/en/readme.html" in names

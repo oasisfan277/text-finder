@@ -1,4 +1,4 @@
-# Folder Text Finder
+﻿# Folder Text Finder
 
 Folder Text Finder is an NVDA add-on for searching files containing text in the folder currently open in Windows File Explorer.
 
@@ -66,3 +66,15 @@ After each search, the results dialog offers a Search Statistics report. It list
 ## Project Status
 
 This repository contains the initial add-on scaffold and core local search engine. It is not yet ready for NVDA Add-on Store submission.
+
+
+## Building The Add-on
+
+Build a local `.nvda-addon` package with:
+
+```powershell
+python scripts/package_addon.py
+```
+
+The package is written to the `dist` folder.
+

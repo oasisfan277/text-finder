@@ -1,4 +1,4 @@
-name: Tests
+﻿name: Tests
 
 on:
   push:
@@ -18,8 +18,16 @@ jobs:
           python-version: "3.12"
 
       - name: Compile Python files
-        run: python -m compileall addon tests
+        run: python -m compileall addon tests scripts
 
       - name: Run search engine tests
         run: python -c "import tests.test_search_engine as t; [getattr(t, name)() for name in dir(t) if name.startswith('test_')]; print('search tests passed')"
 
+      - name: Build NVDA add-on package
+        run: python scripts/package_addon.py
+
+      - name: Upload NVDA add-on package
+        uses: actions/upload-artifact@v4
+        with:
+          name: folder-text-finder-nvda-addon
+          path: dist/*.nvda-addon
