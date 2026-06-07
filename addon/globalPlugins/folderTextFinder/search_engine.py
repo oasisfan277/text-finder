@@ -204,7 +204,7 @@ def sentence_excerpt_for_span(text: str, start: int, end: int) -> str | None:
 	if not is_sentence_like(text[sentence_start:sentence_end]):
 		return None
 	preview_end = sentence_end
-	if word_count(text[sentence_start:sentence_end]) <= 4:
+	if word_count(text[sentence_start:sentence_end]) <= 4 and not sentence_ends_with_closing_dialogue(text[sentence_start:sentence_end]):
 		next_start, next_end = next_sentence_bounds(text, sentence_end)
 		if next_start is not None and next_end is not None:
 			preview_end = next_end
@@ -240,7 +240,15 @@ def next_sentence_bounds(text: str, offset: int) -> tuple[int | None, int | None
 
 
 def is_sentence_like(excerpt: str) -> bool:
+	stripped = excerpt.strip().rstrip("'\"\u201d\u2019)]}")
+	return bool(stripped) and stripped[-1:] in ".!?"
+
+
+def sentence_ends_with_closing_dialogue(excerpt: str) -> bool:
 	stripped = excerpt.strip()
+	if not stripped or stripped[-1:] not in "'\"\u201d\u2019":
+		return False
+	stripped = stripped.rstrip("'\"\u201d\u2019)]}")
 	return bool(stripped) and stripped[-1:] in ".!?"
 
 

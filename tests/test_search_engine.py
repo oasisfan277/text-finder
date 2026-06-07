@@ -132,3 +132,16 @@ def test_preview_falls_back_for_code_like_text_without_sentence_punctuation():
 	start = text.index("sister")
 	preview = preview_for_span(text, start, start + len("sister"))
 	assert "alpha sister beta" in preview
+
+def test_preview_stops_at_question_mark_inside_closing_quote():
+	text = 'Before. "Where is my sister?" Mother asked. After.'
+	start = text.index("sister")
+	preview = preview_for_span(text, start, start + len("sister"))
+	assert preview == '"Where is my sister?"'
+
+
+def test_preview_stops_at_exclamation_mark_inside_closing_quote():
+	text = 'Before. "Run, sister!" Mother shouted. After.'
+	start = text.index("sister")
+	preview = preview_for_span(text, start, start + len("sister"))
+	assert preview == '"Run, sister!"'
