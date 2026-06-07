@@ -5,11 +5,12 @@ from pathlib import Path
 from scripts.package_addon import build_package
 from addon.globalPlugins.folderTextFinder.search_engine import (
 	SearchOptions,
+	SearchResult,
 	find_matches,
 	line_column_for_offset,
 	literal_spans,
 )
-from addon.globalPlugins.folderTextFinder import normalize_search_folder, path_from_shell_location_url, render_invisible_text
+from addon.globalPlugins.folderTextFinder import format_result_for_list, normalize_search_folder, path_from_shell_location_url, render_invisible_text
 from addon.globalPlugins.folderTextFinder.text_extractors import ExtractedText
 
 
@@ -87,3 +88,11 @@ def test_normalize_search_folder_uses_parent_for_file():
 		book = folder / "chapter.txt"
 		book.write_text("hello", encoding="utf-8")
 		assert normalize_search_folder(str(book)) == str(folder)
+
+
+def test_format_result_for_list_contains_location_and_preview():
+	result = SearchResult(path=Path("book.txt"), line=3, column=5, preview="matching text")
+	formatted = format_result_for_list(result)
+	assert "book.txt" in formatted
+	assert "Line 3, Column 5" in formatted
+	assert "matching text" in formatted

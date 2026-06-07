@@ -388,10 +388,9 @@ class FolderTextFinderDialog(wx.Dialog):
 		mainSizer.Add(wx.StaticText(self, label=_("File name &filters:")), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		mainSizer.Add(self.filterCtrl, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
-		self.resultsCtrl = wx.ListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
-		for index, label in enumerate((_("File"), _("Location"), _("Preview"))):
-			self.resultsCtrl.InsertColumn(index, label)
-		mainSizer.Add(self.resultsCtrl, 1, wx.EXPAND | wx.ALL, 8)
+		mainSizer.Add(wx.StaticText(self, label=_("Search &results:")), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+		self.resultsCtrl = wx.ListBox(self, style=wx.LB_SINGLE)
+		mainSizer.Add(self.resultsCtrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
 		buttonSizer = wx.BoxSizer(wx.HORIZONTAL)
 		self.searchButton = wx.Button(self, label=_("&Search"))
@@ -411,7 +410,7 @@ class FolderTextFinderDialog(wx.Dialog):
 		self.closeButton.Bind(wx.EVT_BUTTON, lambda evt: self.Destroy())
 		self.queryCtrl.Bind(wx.EVT_CHAR_HOOK, self.on_query_char_hook)
 		self.queryCtrl.Bind(wx.EVT_TEXT, self.on_query_text)
-		self.resultsCtrl.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.on_open_result)
+		self.resultsCtrl.Bind(wx.EVT_LISTBOX_DCLICK, self.on_open_result)
 
 	def on_search(self, evt):
 		query = self.queryCtrl.GetValue()
@@ -419,7 +418,7 @@ class FolderTextFinderDialog(wx.Dialog):
 			ui.message(_("Enter text to search for."))
 			return
 		self.searchButton.Disable()
-		self.resultsCtrl.DeleteAllItems()
+		self.resultsCtrl.Clear()
 		ui.message(_("Searching."))
 		options = SearchOptions(
 			query=query,
@@ -472,18 +471,16 @@ class FolderTextFinderDialog(wx.Dialog):
 		self.results = results
 		self.statistics = statistics
 		for result in results:
-			index = self.resultsCtrl.InsertItem(self.resultsCtrl.GetItemCount(), result.path.name)
-			location = result.format_location()
-			self.resultsCtrl.SetItem(index, 1, location)
-			self.resultsCtrl.SetItem(index, 2, result.preview)
-		for column in range(3):
-			self.resultsCtrl.SetColumnWidth(column, wx.LIST_AUTOSIZE_USEHEADER)
+			self.resultsCtrl.Append(format_result_for_list(result))
 		self.searchButton.Enable()
+		if results:
+			self.resultsCtrl.SetSelection(0)
+			self.resultsCtrl.SetFocus()
 		ui.message(statistics.summary_message())
 
 	def on_open_result(self, evt):
-		index = self.resultsCtrl.GetFirstSelected()
-		if index < 0 or index >= len(self.results):
+		index = self.resultsCtrl.GetSelection()
+		if index == wx.NOT_FOUND or index < 0 or index >= len(self.results):
 			ui.message(_("Select a result first."))
 			return
 		path = self.results[index].path
@@ -522,6 +519,15 @@ class StatisticsDialog(wx.Dialog):
 			wx.TheClipboard.SetData(wx.TextDataObject(self.report))
 			wx.TheClipboard.Close()
 			ui.message(_("Search statistics copied to clipboard."))
+
+
+def format_result_for_list(result):
+	return _("{file}, {location}, {path}, preview: {preview}").format(
+		file=result.path.name,
+		location=result.format_location(),
+		path=result.path,
+		preview=result.preview,
+	)
 
 
 def render_invisible_text(text):
