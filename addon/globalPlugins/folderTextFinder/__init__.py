@@ -374,14 +374,19 @@ class FolderTextFinderDialog(wx.Dialog):
 		self.previewCtrl = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_READONLY)
 		mainSizer.Add(self.previewCtrl, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
-		self.wholeWordCtrl = wx.CheckBox(self, label=_("Exact &whole word search"))
+		searchModeSizer = wx.StaticBoxSizer(wx.VERTICAL, self, _("Search mode"))
+		self.exactFragmentCtrl = wx.RadioButton(self, label=_("Exact &fragment"), style=wx.RB_GROUP)
+		self.exactWholeWordCtrl = wx.RadioButton(self, label=_("Exact &whole word"))
+		self.exactFragmentCtrl.SetValue(True)
+		searchModeSizer.Add(self.exactFragmentCtrl, 0, wx.ALL, 4)
+		searchModeSizer.Add(self.exactWholeWordCtrl, 0, wx.ALL, 4)
 		self.caseCtrl = wx.CheckBox(self, label=_("&Case sensitive"))
 		self.subfoldersCtrl = wx.CheckBox(self, label=_("Include &subfolders"))
 		self.reportPagesCtrl = wx.CheckBox(self, label=_("Report &page numbers when available"))
 		self.reportPagesCtrl.SetValue(get_setting("reportPageNumbers"))
 		self.filterCtrl = wx.TextCtrl(self, value=DEFAULT_FILE_FILTERS)
 
-		mainSizer.Add(self.wholeWordCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+		mainSizer.Add(searchModeSizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		mainSizer.Add(self.caseCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		mainSizer.Add(self.subfoldersCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		mainSizer.Add(self.reportPagesCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
@@ -422,7 +427,7 @@ class FolderTextFinderDialog(wx.Dialog):
 		ui.message(_("Searching."))
 		options = SearchOptions(
 			query=query,
-			whole_word=self.wholeWordCtrl.GetValue(),
+			whole_word=self.exactWholeWordCtrl.GetValue(),
 			case_sensitive=self.caseCtrl.GetValue(),
 			include_subfolders=self.subfoldersCtrl.GetValue(),
 			file_patterns=tuple(pattern.strip() for pattern in self.filterCtrl.GetValue().split(";") if pattern.strip()),

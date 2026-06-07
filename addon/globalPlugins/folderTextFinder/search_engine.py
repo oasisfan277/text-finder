@@ -189,9 +189,64 @@ def line_column_for_offset(text: str, offset: int) -> tuple[int, int]:
 
 
 def preview_for_span(text: str, start: int, end: int, context: int = 80) -> str:
+	sentence_preview = sentence_excerpt_for_span(text, start, end)
+	if sentence_preview:
+		return render_preview_text(sentence_preview)
 	preview_start = max(0, start - context)
 	preview_end = min(len(text), end + context)
-	preview = text[preview_start:preview_end]
-	return preview.replace("\r", "<carriage return>").replace("\n", "<newline>").replace("\t", "<tab>")
+	return render_preview_text(text[preview_start:preview_end])
 
 
+def sentence_excerpt_for_span(text: str, start: int, end: int) -> str | None:
+	sentence_start, sentence_end = sentence_bounds_for_offset(text, start)
+	if sentence_start is None or sentence_end is None:
+		return None
+	if not is_sentence_like(text[sentence_start:sentence_end]):
+		return None
+	preview_end = sentence_end
+	if word_count(text[sentence_start:sentence_end]) <= 4:
+		next_start, next_end = next_sentence_bounds(text, sentence_end)
+		if next_start is not None and next_end is not None:
+			preview_end = next_end
+	return text[sentence_start:preview_end].strip()
+
+
+def sentence_bounds_for_offset(text: str, offset: int) -> tuple[int | None, int | None]:
+	boundary = offset - 1
+	while boundary >= 0 and text[boundary] not in ".!?\r\n":
+		boundary -= 1
+	start = boundary + 1
+	while start < len(text) and text[start].isspace():
+		start += 1
+	end = offset
+	while end < len(text) and text[end] not in ".!?\r\n":
+		end += 1
+	if end < len(text) and text[end] in ".!?":
+		end += 1
+	while end < len(text) and text[end] in "'\"\u201d\u2019)]}":
+		end += 1
+	if start >= end:
+		return None, None
+	return start, end
+
+
+def next_sentence_bounds(text: str, offset: int) -> tuple[int | None, int | None]:
+	start = offset
+	while start < len(text) and text[start].isspace():
+		start += 1
+	if start >= len(text):
+		return None, None
+	return sentence_bounds_for_offset(text, start)
+
+
+def is_sentence_like(excerpt: str) -> bool:
+	stripped = excerpt.strip()
+	return bool(stripped) and stripped[-1:] in ".!?"
+
+
+def word_count(text: str) -> int:
+	return len(re.findall(r"\b\w+\b", text))
+
+
+def render_preview_text(text: str) -> str:
+	return text.replace("\r", "<carriage return>").replace("\n", "<newline>").replace("\t", "<tab>")

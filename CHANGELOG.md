@@ -11,11 +11,8 @@
 - Improved current File Explorer folder detection using the Windows Shell application when available.
 - Allowed folder detection to use the parent folder of a focused file path.
 - Added readable invisible-character preview text for the search query.
+- Added explicit Exact fragment and Exact whole word search-mode choices.
+- Added sentence excerpts for prose search results.
 - Added a local package builder for creating `.nvda-addon` files.
 - Added GitHub Actions package artifact upload.
 - Added privacy-focused documentation.
-
-
-
-
-

@@ -9,6 +9,7 @@ from addon.globalPlugins.folderTextFinder.search_engine import (
 	find_matches,
 	line_column_for_offset,
 	literal_spans,
+	preview_for_span,
 )
 from addon.globalPlugins.folderTextFinder import format_result_for_list, normalize_search_folder, path_from_shell_location_url, render_invisible_text
 from addon.globalPlugins.folderTextFinder.text_extractors import ExtractedText
@@ -110,3 +111,24 @@ def test_exact_whole_word_search_does_not_match_curly_apostrophe_suffix():
 	results = list(find_matches(Path("example.txt"), ExtractedText(text), SearchOptions(query="sister", whole_word=True)))
 	assert len(results) == 1
 	assert results[0].column == 1
+
+
+def test_preview_uses_full_sentence_for_prose():
+	text = "Before. My sister opened the old wooden door slowly. After."
+	start = text.index("sister")
+	preview = preview_for_span(text, start, start + len("sister"))
+	assert preview == "My sister opened the old wooden door slowly."
+
+
+def test_preview_adds_next_sentence_when_sentence_is_short():
+	text = "Before. Sister smiled. Then she waved from the doorway. After."
+	start = text.index("Sister")
+	preview = preview_for_span(text, start, start + len("Sister"))
+	assert preview == "Sister smiled. Then she waved from the doorway."
+
+
+def test_preview_falls_back_for_code_like_text_without_sentence_punctuation():
+	text = "alpha sister beta gamma"
+	start = text.index("sister")
+	preview = preview_for_span(text, start, start + len("sister"))
+	assert "alpha sister beta" in preview

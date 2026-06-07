@@ -1,4 +1,4 @@
-﻿# Folder Text Finder
+# Folder Text Finder
 
 Folder Text Finder is an NVDA add-on for searching files containing text in the current folder, a selected folder, or the parent folder of a focused file.
 
@@ -77,7 +77,3 @@ python scripts/package_addon.py
 ```
 
 The package is written to the `dist` folder.
-
-
-
-
