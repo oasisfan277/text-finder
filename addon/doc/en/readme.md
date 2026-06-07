@@ -1,6 +1,6 @@
 ﻿# Folder Text Finder
 
-Folder Text Finder searches files containing text in the current folder, or in the parent folder of a focused file.
+Folder Text Finder searches files containing text in the current folder, a selected folder, or the parent folder of a focused file.
 
 ## Privacy and Security
 
@@ -50,4 +50,5 @@ Image-only or scanned PDFs are not OCR'd.
 ## Search Statistics
 
 After a search, use Search Statistics to review what was searched, skipped, unsupported, unreadable, or found to contain no extractable text.
+
 

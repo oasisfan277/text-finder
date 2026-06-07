@@ -174,21 +174,37 @@ def get_foreground_explorer_folder_from_shell():
 		foreground_root = ctypes.windll.user32.GetAncestor(foreground_hwnd, GA_ROOT) or foreground_hwnd
 		shell = win32com.client.Dispatch("Shell.Application")
 		candidate_folders = []
+		selected_folders = []
 		for window in shell.Windows():
 			try:
-				folder = normalize_search_folder(window.LocationURL)
+				selected_folder = get_selected_folder_from_shell_window(window)
+				folder = selected_folder or normalize_search_folder(window.LocationURL)
 				if not folder:
 					continue
 				candidate_folders.append(folder)
+				if selected_folder:
+					selected_folders.append(selected_folder)
 				if int(window.HWND) == foreground_root:
 					return folder
 			except Exception:
 				continue
+		if len(selected_folders) == 1:
+			return selected_folders[0]
 		if len(candidate_folders) == 1:
 			return candidate_folders[0]
 	except Exception:
 		return None
 	return None
+
+
+def get_selected_folder_from_shell_window(window):
+	try:
+		selected_items = window.Document.SelectedItems()
+		if selected_items.Count != 1:
+			return None
+		return normalize_search_folder(selected_items.Item(0).Path)
+	except Exception:
+		return None
 
 
 def path_from_shell_location_url(location_url):
