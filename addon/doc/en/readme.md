@@ -43,7 +43,7 @@ Results include the file name, full path, line number, column number, matching t
 
 Search results for prose try to show the whole sentence containing the match. If that sentence is very short, the next sentence is included as well.
 
-Press Enter on a selected result to open the extracted document text at the exact match. The result window also has Edit Original for supported editable files and Open File for opening the original file in its default application.
+Use Open Result, or press Enter on a selected result, to open the extracted document text at the exact match. Use Open File to open the original file in its default application.
 
 Page numbers are reported when available. The add-on does not estimate or invent page numbers.
 

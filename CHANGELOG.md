@@ -14,7 +14,7 @@
 - Added explicit Exact fragment and Exact whole word search-mode choices.
 - Added sentence excerpts for prose search results.
 - Added Enter-to-open result text with the caret placed on the exact match.
-- Added Edit Original support for opening editable text files in VS Code or Notepad++ at line and column, and DOCX files in Word at the matched text when available.
+- Added separate Open File and Open Result actions for search results.
 - Added a local package builder for creating `.nvda-addon` files.
 - Added GitHub Actions package artifact upload.
 - Added privacy-focused documentation.
