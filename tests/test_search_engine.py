@@ -1,4 +1,5 @@
-﻿import zipfile
+import tempfile
+import zipfile
 from pathlib import Path
 
 from scripts.package_addon import build_package
@@ -8,7 +9,7 @@ from addon.globalPlugins.folderTextFinder.search_engine import (
 	line_column_for_offset,
 	literal_spans,
 )
-from addon.globalPlugins.folderTextFinder import path_from_shell_location_url, render_invisible_text
+from addon.globalPlugins.folderTextFinder import normalize_search_folder, path_from_shell_location_url, render_invisible_text
 from addon.globalPlugins.folderTextFinder.text_extractors import ExtractedText
 
 
@@ -70,3 +71,19 @@ def test_package_contains_manifest_plugin_and_html_guide():
 	assert "manifest.ini" in names
 	assert "globalPlugins/folderTextFinder/__init__.py" in names
 	assert "doc/en/readme.html" in names
+
+
+def test_normalize_search_folder_accepts_folder():
+	with tempfile.TemporaryDirectory() as temp_dir:
+		folder = Path(temp_dir) / "books"
+		folder.mkdir()
+		assert normalize_search_folder(str(folder)) == str(folder)
+
+
+def test_normalize_search_folder_uses_parent_for_file():
+	with tempfile.TemporaryDirectory() as temp_dir:
+		folder = Path(temp_dir) / "books"
+		folder.mkdir()
+		book = folder / "chapter.txt"
+		book.write_text("hello", encoding="utf-8")
+		assert normalize_search_folder(str(book)) == str(folder)

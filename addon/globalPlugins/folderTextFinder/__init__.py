@@ -109,7 +109,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def script_openFolderTextFinder(self, gesture):
 		folder = get_current_explorer_folder()
 		if not folder:
-			ui.message(_("Open a folder in File Explorer before using Folder Text Finder."))
+			ui.message(_("Open a folder or focus a file before using Folder Text Finder."))
 			return
 		wx.CallAfter(FolderTextFinderDialog, gui.mainFrame, folder)
 
@@ -139,17 +139,26 @@ class FolderTextFinderSettingsPanel(SettingsPanel):
 
 
 def get_current_explorer_folder():
-	folder = get_foreground_explorer_folder_from_shell()
+	folder = get_folder_from_focused_object()
 	if folder:
 		return folder
+	return get_foreground_explorer_folder_from_shell()
+
+
+def get_folder_from_focused_object():
 	try:
 		import api
 
-		obj = api.getForegroundObject()
-		for attr in ("location", "value", "name"):
-			folder = getattr(obj, attr, None)
-			if folder and os.path.isdir(folder):
-				return folder
+		objects = [api.getFocusObject(), api.getForegroundObject()]
+		seen = set()
+		for obj in objects:
+			while obj and id(obj) not in seen:
+				seen.add(id(obj))
+				for attr in ("location", "value", "name"):
+					folder = normalize_search_folder(getattr(obj, attr, None))
+					if folder:
+						return folder
+				obj = getattr(obj, "parent", None)
 	except Exception:
 		pass
 	return None
@@ -160,17 +169,23 @@ def get_foreground_explorer_folder_from_shell():
 		import ctypes
 		import win32com.client
 
+		GA_ROOT = 2
 		foreground_hwnd = ctypes.windll.user32.GetForegroundWindow()
+		foreground_root = ctypes.windll.user32.GetAncestor(foreground_hwnd, GA_ROOT) or foreground_hwnd
 		shell = win32com.client.Dispatch("Shell.Application")
+		candidate_folders = []
 		for window in shell.Windows():
 			try:
-				if int(window.HWND) != foreground_hwnd:
+				folder = normalize_search_folder(window.LocationURL)
+				if not folder:
 					continue
-				path = path_from_shell_location_url(window.LocationURL)
-				if path and os.path.isdir(path):
-					return path
+				candidate_folders.append(folder)
+				if int(window.HWND) == foreground_root:
+					return folder
 			except Exception:
 				continue
+		if len(candidate_folders) == 1:
+			return candidate_folders[0]
 	except Exception:
 		return None
 	return None
@@ -187,6 +202,17 @@ def path_from_shell_location_url(location_url):
 		return path.replace("/", "\\")
 	return location_url
 
+
+def normalize_search_folder(candidate):
+	if not candidate:
+		return None
+	path = path_from_shell_location_url(str(candidate).strip().strip('"'))
+	path = os.path.expandvars(path)
+	if os.path.isdir(path):
+		return path
+	if os.path.isfile(path):
+		return os.path.dirname(path)
+	return None
 
 class FolderTextFinderDialog(wx.Dialog):
 	def __init__(self, parent, folder):
