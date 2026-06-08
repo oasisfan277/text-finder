@@ -472,6 +472,15 @@ class FolderTextFinderDialog(wx.Dialog):
 			report_page_numbers=self.reportPagesCtrl.GetValue(),
 		)
 		self._save_search_options(options)
+		log_info(
+			"Folder Text Finder search started. mode=%s case_sensitive=%s include_subfolders=%s filter_count=%d query_length=%d report_pages=%s",
+			"whole word" if options.whole_word else "fragment",
+			options.case_sensitive,
+			options.include_subfolders,
+			len(options.file_patterns),
+			len(options.query),
+			options.report_page_numbers,
+		)
 		thread = threading.Thread(target=self._run_search, args=(options,), daemon=True)
 		thread.start()
 
@@ -524,7 +533,15 @@ class FolderTextFinderDialog(wx.Dialog):
 		self.statistics = statistics
 		self.refresh_results_list()
 		self.searchButton.Enable()
-		if results and self._has_docx_results(results):
+		holding_for_word = bool(results and self._has_docx_results(results))
+		log_info(
+			"Folder Text Finder search complete. results=%d files_with_matches=%d duration=%.2f holding_for_word=%s",
+			len(results),
+			len(statistics.files_with_matches),
+			statistics.duration,
+			holding_for_word,
+		)
+		if holding_for_word:
 			# Word visual line numbers load in the background. Hold the results
 			# announcement until they are ready, then reveal the results.
 			self.start_word_location_enrichment(results)
@@ -547,6 +564,8 @@ class FolderTextFinderDialog(wx.Dialog):
 	def start_word_location_enrichment(self, results):
 		if not self._has_docx_results(results):
 			return
+		docx_count = sum(1 for result in results if result.path.suffix.lower() == ".docx")
+		log_info("Folder Text Finder getting Word locations for %d DOCX results.", docx_count)
 		ui.message(_("Getting Word page and visual line numbers. Please wait."))
 		thread = threading.Thread(target=self.enrich_word_locations, args=(results,), daemon=True)
 		thread.start()
@@ -581,6 +600,7 @@ class FolderTextFinderDialog(wx.Dialog):
 				result_index = indices[local_index]
 				updated_results[result_index] = replace(original_results[result_index], page=page, line=visual_line, column=0, location_unit="Visual line")
 				updated_count += 1
+		log_info("Folder Text Finder Word location lookup finished. updated=%d of docx=%d", updated_count, docx_count)
 		if updated_count:
 			wx.CallAfter(self.finish_word_location_enrichment, original_results, updated_results, updated_count)
 		elif docx_count:
@@ -588,6 +608,7 @@ class FolderTextFinderDialog(wx.Dialog):
 
 	def finish_word_location_enrichment(self, original_results, updated_results, updated_count):
 		if self.results is not original_results:
+			log_info("Folder Text Finder discarded stale Word location results.")
 			return
 		self.results = updated_results
 		self.refresh_results_list()
@@ -595,7 +616,9 @@ class FolderTextFinderDialog(wx.Dialog):
 
 	def report_word_location_enrichment_failed(self, original_results, reason=None):
 		if self.results is not original_results:
+			log_info("Folder Text Finder discarded stale Word location failure.")
 			return
+		log_info("Folder Text Finder Word location lookup failed. Revealing results without Word numbers.")
 		if reason:
 			ui.message(_("Word page and visual line numbers could not be added: {reason}").format(reason=reason))
 		else:
@@ -626,6 +649,7 @@ class FolderTextFinderDialog(wx.Dialog):
 		result = self.get_selected_result()
 		if result is None:
 			return
+		log_info("Folder Text Finder opening result text for a %s file.", result.path.suffix.lower() or "no-extension")
 		try:
 			extracted = extract_text(result.path)
 		except TextExtractionError as exc:
@@ -775,6 +799,7 @@ def select_docx_match_in_word(word, result, extracted_text):
 	return True
 
 def open_result_file(result, extracted_text=None):
+	log_info("Folder Text Finder opening original file with a %s extension.", result.path.suffix.lower() or "no-extension")
 	if result.path.suffix.lower() == ".docx":
 		if extracted_text is None:
 			try:

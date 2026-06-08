@@ -43,9 +43,26 @@ Results include the file name, full path, location, matching text preview, and p
 
 Search results for prose try to show the whole sentence containing the match. If that sentence is very short, the next sentence is included as well.
 
-Use Open Result, or press Enter on a selected result, to open the extracted document text at the exact match. Use Open File to open the original file. For DOCX files, the result list tries to ask Microsoft Word for live page and visual line numbers after the search completes.
+Use Open Result, or press Enter on a selected result, to open the extracted document text at the exact match. Use Open File to open the original file.
+
+For DOCX files, the add-on asks Microsoft Word for live page and visual line numbers after the search completes. While those numbers load, the results are held back instead of being announced with incomplete locations. NVDA reports that it is getting Word page and visual line numbers, and then reveals the finished results in one pass. If Word cannot supply the numbers, the results are still revealed using the Open Result position so the list is never left silent.
 
 Page numbers are reported when available. The add-on does not estimate or invent page numbers.
+
+## Remembered Search Options
+
+The search mode, case sensitivity, Include subfolders, file name filters, and page-number reporting are remembered each time you search and restored the next time you open Folder Text Finder. The settings persist across NVDA sessions.
+
+## What NVDA Announces During a Search
+
+1. Activating the command announces "Folder Text Finder starting", then "Folder Text Finder opened. Search folder:" followed by the folder. If no folder is detected, it asks you to open a folder or focus a file first.
+2. As you type, the read-only preview updates. With invisible-character announcements enabled, spaces, tabs, and line breaks are announced as you enter them.
+3. Activating Search announces "Searching."
+4. When the results contain no Word documents, focus moves to the results list, the first result is read, and the search summary is announced.
+5. When the results include Word documents, NVDA announces "Getting Word page and visual line numbers. Please wait." The results are revealed only after the numbers load, prefixed with how many results were updated, followed by the search summary. If the Word lookup fails, the failure is announced and the results are still revealed.
+6. Each result reads as file name, location, full path, and a matching-text preview.
+7. Open Result, or Enter on a result, announces that the result opened at the exact match or at the reported location. Open File on a Word document announces the page and visual line that Word reports.
+8. Search Statistics opens a report you can read or copy to the clipboard.
 
 ## Supported Files
 
