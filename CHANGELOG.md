@@ -17,6 +17,7 @@
 - Added separate Open File and Open Result actions for search results.
 - Changed DOCX and ODT result locations to point users to Open Result instead of showing misleading line, paragraph, or text block numbers.
 - Added DOCX support that asks Microsoft Word for the live page and visual line when opening a selected result.
+- Updated selected DOCX results to announce and display Word page and visual line after Open File succeeds.
 - Removed automatic Word lookups during search so Word only opens the one selected result when the user chooses Open File.
 - Fixed Word automation startup on systems where the COM library rejects the dynamic COM argument.
 - Added a local package builder for creating `.nvda-addon` files.

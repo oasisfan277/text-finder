@@ -2,6 +2,7 @@ import os
 import subprocess
 import threading
 import traceback
+from dataclasses import replace
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -526,7 +527,11 @@ class FolderTextFinderDialog(wx.Dialog):
 		result = self.get_selected_result()
 		if result is None:
 			return
-		open_result_file(result)
+		updated_result = open_result_file(result)
+		if updated_result is not None and updated_result != result:
+			index = self.resultsCtrl.GetSelection()
+			self.results[index] = updated_result
+			self.refresh_results_list()
 
 	def get_selected_result(self):
 		index = self.resultsCtrl.GetSelection()
@@ -548,7 +553,8 @@ class ResultLocationDialog(wx.Dialog):
 		self.text = text
 		sizer = wx.BoxSizer(wx.VERTICAL)
 		sizer.Add(wx.StaticText(self, label=_("File: {path}").format(path=result.path)), 0, wx.ALL, 8)
-		sizer.Add(wx.StaticText(self, label=_("Location: {location}").format(location=result.format_location())), 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+		self.locationLabel = wx.StaticText(self, label=_("Location: {location}").format(location=result.format_location()))
+		sizer.Add(self.locationLabel, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 		self.textCtrl = wx.TextCtrl(self, value=text, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
 		sizer.Add(self.textCtrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 		buttonSizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -573,10 +579,14 @@ class ResultLocationDialog(wx.Dialog):
 		if self.result.location_unit == "Open Result":
 			ui.message(_("Result opened at the exact match."))
 		else:
-			ui.message(_("Result opened at line {line}, column {column}.").format(line=self.result.line, column=self.result.column))
+			ui.message(_("Result opened at {location}.").format(location=self.result.format_location()))
 
 	def on_open_file(self, evt):
-		open_result_file(self.result, self.text)
+		updated_result = open_result_file(self.result, self.text)
+		if updated_result is not None and updated_result != self.result:
+			self.result = updated_result
+			self.locationLabel.SetLabel(_("Location: {location}").format(location=self.result.format_location()))
+			self.Layout()
 
 
 def initialize_com_for_thread():
@@ -646,11 +656,13 @@ def open_result_file(result, extracted_text=None):
 			except Exception:
 				log_exception("Folder Text Finder could not extract DOCX text before opening in Word.")
 				open_file_or_select(result.path)
-				return
-		if open_docx_result_in_word(result, extracted_text):
-			return
+				return result
+		updated_result = open_docx_result_in_word(result, extracted_text)
+		if updated_result is not None:
+			return updated_result
 		ui.message(_("Could not open this DOCX in Word. Opened the file normally."))
 	open_file_or_select(result.path)
+	return result
 
 
 def open_docx_result_in_word(result, extracted_text):
@@ -660,12 +672,12 @@ def open_docx_result_in_word(result, extracted_text):
 		if location:
 			page, visual_line = location
 			ui.message(_("Opened in Word at page {page}, visual line {line}.").format(page=page, line=visual_line))
-		else:
-			ui.message(_("Opened in Word, but Word did not report a page or visual line."))
-		return True
+			return replace(result, page=page, line=visual_line, column=0, location_unit="Visual line")
+		ui.message(_("Opened in Word, but Word did not report a page or visual line."))
+		return result
 	except Exception:
 		log_exception("Folder Text Finder could not open DOCX result in Word.")
-		return False
+		return None
 
 
 def get_word_application():
