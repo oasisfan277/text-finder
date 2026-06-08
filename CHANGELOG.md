@@ -17,6 +17,7 @@
 - Added separate Open File and Open Result actions for search results.
 - Changed DOCX and ODT result locations to point users to Open Result instead of showing misleading line, paragraph, or text block numbers.
 - Added DOCX support that asks Microsoft Word for live page and visual line numbers in search results when available.
+- Fixed Word page and visual line lookup in the background search-results update by initializing COM in the worker thread and reporting failures to the user.
 - Added a local package builder for creating `.nvda-addon` files.
 - Added GitHub Actions package artifact upload.
 - Added privacy-focused documentation.

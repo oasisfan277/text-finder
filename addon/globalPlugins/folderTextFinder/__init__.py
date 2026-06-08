@@ -509,10 +509,12 @@ class FolderTextFinderDialog(wx.Dialog):
 	def enrich_word_locations(self, original_results):
 		updated_results = list(original_results)
 		updated_count = 0
+		docx_count = 0
 		indices_by_path = {}
 		for index, result in enumerate(original_results):
 			if result.path.suffix.lower() == ".docx":
 				indices_by_path.setdefault(result.path, []).append(index)
+				docx_count += 1
 		for path, indices in indices_by_path.items():
 			try:
 				extracted_text = extract_text(path).text
@@ -527,6 +529,8 @@ class FolderTextFinderDialog(wx.Dialog):
 				updated_count += 1
 		if updated_count:
 			wx.CallAfter(self.finish_word_location_enrichment, original_results, updated_results, updated_count)
+		elif docx_count:
+			wx.CallAfter(self.report_word_location_enrichment_failed)
 
 	def finish_word_location_enrichment(self, original_results, updated_results, updated_count):
 		if self.results is not original_results:
@@ -534,6 +538,9 @@ class FolderTextFinderDialog(wx.Dialog):
 		self.results = updated_results
 		self.refresh_results_list()
 		ui.message(_("Word page and visual line numbers added to {count} results.").format(count=updated_count))
+
+	def report_word_location_enrichment_failed(self):
+		ui.message(_("Word page and visual line numbers could not be added. Open File can still ask Word for the selected result."))
 
 	def on_results_char_hook(self, evt):
 		key_code = evt.GetKeyCode()
@@ -617,19 +624,46 @@ class ResultLocationDialog(wx.Dialog):
 		open_result_file(self.result, self.text)
 
 
+def initialize_com_for_thread():
+	try:
+		import pythoncom
+
+		pythoncom.CoInitialize()
+		return pythoncom.CoUninitialize
+	except Exception:
+		pass
+	try:
+		import comtypes
+
+		comtypes.CoInitialize()
+		return comtypes.CoUninitialize
+	except Exception:
+		pass
+	try:
+		import ctypes
+
+		ctypes.windll.ole32.CoInitialize(None)
+		return ctypes.windll.ole32.CoUninitialize
+	except Exception:
+		return lambda: None
+
 def get_docx_visual_locations(path, results, extracted_text):
-	word = get_word_application()
-	word.Visible = True
-	document = word.Documents.Open(str(path))
-	document.Activate()
-	locations = {}
-	for index, result in enumerate(results):
-		if select_docx_match_in_word(word, result, extracted_text):
-			selection = word.Selection
-			page = selection.Information(3)
-			visual_line = selection.Information(10)
-			locations[index] = (page, visual_line)
-	return locations
+	uninitialize_com = initialize_com_for_thread()
+	try:
+		word = get_word_application()
+		word.Visible = True
+		document = word.Documents.Open(str(path))
+		document.Activate()
+		locations = {}
+		for index, result in enumerate(results):
+			if select_docx_match_in_word(word, result, extracted_text):
+				selection = word.Selection
+				page = selection.Information(3)
+				visual_line = selection.Information(10)
+				locations[index] = (page, visual_line)
+		return locations
+	finally:
+		uninitialize_com()
 
 
 def select_docx_match_in_word(word, result, extracted_text):
