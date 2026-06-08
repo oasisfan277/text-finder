@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0
+
+- Held the results announcement for searches that contain DOCX files until the background Word page and visual line numbers finish loading, then revealed and announced the results once, so results are not announced twice with incomplete locations.
+- Revealed the results even when the background Word lookup fails, so the results list is never left silent.
+- Remembered the search mode, case sensitivity, include-subfolders choice, file name filters, and page-number reporting between searches and NVDA sessions.
+- Added workflow logging for each search stage so the spoken workflow can be reviewed in the NVDA log without recording search text or document contents.
+- Added a step-by-step description of what NVDA announces during a search.
+
 ## 0.1.0
 
 - Initial project scaffold.
@@ -21,11 +29,6 @@
 - Added hidden background Word lookup to fill DOCX search results with page and visual line numbers after a search without showing Word.
 - Removed automatic Word lookups during search so Word only opens the one selected result when the user chooses Open File.
 - Fixed Word automation startup on systems where the COM library rejects the dynamic COM argument.
-- Held the results announcement for searches that contain DOCX files until the background Word page and visual line numbers finish loading, then revealed and announced the results once, so results are not announced twice with incomplete locations.
-- Revealed the results even when the background Word lookup fails, so the results list is never left silent.
-- Remembered the search mode, case sensitivity, include-subfolders choice, file name filters, and page-number reporting between searches and NVDA sessions.
-- Added workflow logging for each search stage so the spoken workflow can be reviewed in the NVDA log without recording search text or document contents.
 - Added a local package builder for creating `.nvda-addon` files.
 - Added GitHub Actions package artifact upload.
 - Added privacy-focused documentation.
-- Added a step-by-step description of what NVDA announces during a search.
