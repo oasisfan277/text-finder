@@ -162,3 +162,7 @@ def test_text_result_location_uses_line_label():
 	text = "First line\nSecond line with cat"
 	result = list(find_matches(Path("book.txt"), ExtractedText(text), SearchOptions(query="cat")))[0]
 	assert result.format_location() == "Line 2, Column 18"
+
+def test_word_visual_line_location_omits_column():
+	result = SearchResult(path=Path("book.docx"), line=12, column=0, preview="match", page=3, location_unit="Visual line")
+	assert result.format_location() == "Page 3, visual line 12"

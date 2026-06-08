@@ -16,7 +16,7 @@
 - Added Enter-to-open result text with the caret placed on the exact match.
 - Added separate Open File and Open Result actions for search results.
 - Changed DOCX and ODT result locations to point users to Open Result instead of showing misleading line, paragraph, or text block numbers.
-- Added DOCX Open File support that asks Microsoft Word to select the match and report the live Word page and visual line when available.
+- Added DOCX support that asks Microsoft Word for live page and visual line numbers in search results when available.
 - Added a local package builder for creating `.nvda-addon` files.
 - Added GitHub Actions package artifact upload.
 - Added privacy-focused documentation.

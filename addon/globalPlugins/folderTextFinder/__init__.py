@@ -2,6 +2,7 @@ import os
 import subprocess
 import threading
 import traceback
+from dataclasses import replace
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -479,13 +480,60 @@ class FolderTextFinderDialog(wx.Dialog):
 	def _finish_search(self, results, statistics):
 		self.results = results
 		self.statistics = statistics
-		for result in results:
-			self.resultsCtrl.Append(format_result_for_list(result))
+		self.refresh_results_list()
 		self.searchButton.Enable()
 		if results:
 			self.resultsCtrl.SetSelection(0)
 			self.resultsCtrl.SetFocus()
 		ui.message(statistics.summary_message())
+		self.start_word_location_enrichment(results)
+
+	def refresh_results_list(self):
+		selection = self.resultsCtrl.GetSelection()
+		self.resultsCtrl.Clear()
+		for result in self.results:
+			self.resultsCtrl.Append(format_result_for_list(result))
+		if self.results:
+			if selection == wx.NOT_FOUND or selection < 0 or selection >= len(self.results):
+				selection = 0
+			self.resultsCtrl.SetSelection(selection)
+
+	def start_word_location_enrichment(self, results):
+		if not self.reportPagesCtrl.GetValue():
+			return
+		if not any(result.path.suffix.lower() == ".docx" for result in results):
+			return
+		thread = threading.Thread(target=self.enrich_word_locations, args=(results,), daemon=True)
+		thread.start()
+
+	def enrich_word_locations(self, original_results):
+		updated_results = list(original_results)
+		updated_count = 0
+		indices_by_path = {}
+		for index, result in enumerate(original_results):
+			if result.path.suffix.lower() == ".docx":
+				indices_by_path.setdefault(result.path, []).append(index)
+		for path, indices in indices_by_path.items():
+			try:
+				extracted_text = extract_text(path).text
+				locations = get_docx_visual_locations(path, [original_results[index] for index in indices], extracted_text)
+			except Exception:
+				log_exception("Folder Text Finder could not enrich DOCX result locations.")
+				continue
+			for local_index, location in locations.items():
+				page, visual_line = location
+				result_index = indices[local_index]
+				updated_results[result_index] = replace(original_results[result_index], page=page, line=visual_line, column=0, location_unit="Visual line")
+				updated_count += 1
+		if updated_count:
+			wx.CallAfter(self.finish_word_location_enrichment, original_results, updated_results, updated_count)
+
+	def finish_word_location_enrichment(self, original_results, updated_results, updated_count):
+		if self.results is not original_results:
+			return
+		self.results = updated_results
+		self.refresh_results_list()
+		ui.message(_("Word page and visual line numbers added to {count} results.").format(count=updated_count))
 
 	def on_results_char_hook(self, evt):
 		key_code = evt.GetKeyCode()
@@ -569,6 +617,38 @@ class ResultLocationDialog(wx.Dialog):
 		open_result_file(self.result, self.text)
 
 
+def get_docx_visual_locations(path, results, extracted_text):
+	word = get_word_application()
+	word.Visible = True
+	document = word.Documents.Open(str(path))
+	document.Activate()
+	locations = {}
+	for index, result in enumerate(results):
+		if select_docx_match_in_word(word, result, extracted_text):
+			selection = word.Selection
+			page = selection.Information(3)
+			visual_line = selection.Information(10)
+			locations[index] = (page, visual_line)
+	return locations
+
+
+def select_docx_match_in_word(word, result, extracted_text):
+	matched_text = extracted_text[result.start:result.end]
+	if not matched_text:
+		return False
+	selection = word.Selection
+	selection.HomeKey(Unit=6)
+	find = selection.Find
+	find.ClearFormatting()
+	find.Text = matched_text
+	find.Forward = True
+	find.Wrap = 0
+	occurrence = extracted_text[:result.start].count(matched_text) + 1
+	for _ in range(occurrence):
+		if not find.Execute():
+			return False
+	return True
+
 def open_result_file(result, extracted_text=None):
 	if result.path.suffix.lower() == ".docx":
 		if extracted_text is None:
@@ -585,27 +665,12 @@ def open_result_file(result, extracted_text=None):
 
 
 def open_docx_result_in_word(result, extracted_text):
-	matched_text = extracted_text[result.start:result.end]
-	if not matched_text:
-		return False
 	try:
-		word = get_word_application()
-		word.Visible = True
-		document = word.Documents.Open(str(result.path))
-		document.Activate()
-		selection = word.Selection
-		selection.HomeKey(Unit=6)
-		find = selection.Find
-		find.ClearFormatting()
-		find.Text = matched_text
-		find.Forward = True
-		find.Wrap = 0
-		occurrence = extracted_text[:result.start].count(matched_text) + 1
-		for _ in range(occurrence):
-			if not find.Execute():
-				return False
-		page = selection.Information(3)
-		visual_line = selection.Information(10)
+		locations = get_docx_visual_locations(result.path, [result], extracted_text)
+		location = locations.get(0)
+		if not location:
+			return False
+		page, visual_line = location
 		ui.message(_("Opened in Word at page {page}, visual line {line}.").format(page=page, line=visual_line))
 		return True
 	except Exception:

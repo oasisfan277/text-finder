@@ -61,7 +61,7 @@ Standard keyboard navigation remains the default. Advanced direct entry can be e
 
 ## Search Statistics
 
-Use Open Result, or press Enter on a selected result, to open the extracted document text at the exact match. Use Open File to open the original file. For DOCX files, Open File tries to ask Microsoft Word to select the match and report the live Word page and visual line.
+Use Open Result, or press Enter on a selected result, to open the extracted document text at the exact match. Use Open File to open the original file. For DOCX files, the result list tries to ask Microsoft Word for live page and visual line numbers after the search completes.
 
 After each search, the results dialog offers a Search Statistics report. It lists the search folder, search mode, duration, number of matches, number of searched files, unsupported files, unreadable files, and files without extractable text.
 

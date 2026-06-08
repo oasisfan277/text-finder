@@ -36,6 +36,10 @@ class SearchResult:
 			if self.page is not None:
 				return f"Page {self.page}, exact position in Open Result"
 			return "Exact position in Open Result"
+		if self.location_unit == "Visual line":
+			if self.page is not None:
+				return f"Page {self.page}, visual line {self.line}"
+			return f"Visual line {self.line}"
 		if self.page is not None:
 			return f"Page {self.page}, {self.location_unit} {self.line}, Column {self.column}"
 		return f"{self.location_unit} {self.line}, Column {self.column}"
