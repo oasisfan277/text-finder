@@ -152,10 +152,10 @@ def test_search_result_keeps_exact_match_offsets():
 	assert result.start == text.index("sister")
 	assert result.end == result.start + len("sister")
 
-def test_docx_result_location_uses_text_block_label():
+def test_docx_result_location_uses_open_result_label():
 	text = "First paragraph\nSecond paragraph with cat"
 	result = list(find_matches(Path("book.docx"), ExtractedText(text), SearchOptions(query="cat")))[0]
-	assert result.format_location() == "Text block 2, Column 23"
+	assert result.format_location() == "Exact position in Open Result"
 
 
 def test_text_result_location_uses_line_label():

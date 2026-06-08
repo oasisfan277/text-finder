@@ -15,7 +15,7 @@
 - Added sentence excerpts for prose search results.
 - Added Enter-to-open result text with the caret placed on the exact match.
 - Added separate Open File and Open Result actions for search results.
-- Changed DOCX and ODT result locations from line or paragraph labels to text block labels to avoid confusion with Word arrowing lines.
+- Changed DOCX and ODT result locations to point users to Open Result instead of showing misleading line, paragraph, or text block numbers.
 - Added a local package builder for creating `.nvda-addon` files.
 - Added GitHub Actions package artifact upload.
 - Added privacy-focused documentation.

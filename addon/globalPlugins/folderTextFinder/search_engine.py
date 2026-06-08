@@ -32,6 +32,10 @@ class SearchResult:
 	end: int = 0
 
 	def format_location(self) -> str:
+		if self.location_unit == "Open Result":
+			if self.page is not None:
+				return f"Page {self.page}, exact position in Open Result"
+			return "Exact position in Open Result"
 		if self.page is not None:
 			return f"Page {self.page}, {self.location_unit} {self.line}, Column {self.column}"
 		return f"{self.location_unit} {self.line}, Column {self.column}"
@@ -162,7 +166,7 @@ def find_matches(path: Path, extracted: ExtractedText, options: SearchOptions):
 
 def location_unit_for_path(path: Path) -> str:
 	if path.suffix.lower() in {".docx", ".odt"}:
-		return "Text block"
+		return "Open Result"
 	return "Line"
 
 

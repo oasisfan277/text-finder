@@ -39,7 +39,7 @@ The search dialog also contains a read-only preview of the search text. Spaces, 
 
 ## Results
 
-Results include the file name, full path, location, matching text preview, and page number when reliable page information is available. Text files use line and column. Word-style documents use text block and column because Word arrowing lines are layout-dependent and do not match extracted text positions.
+Results include the file name, full path, location, matching text preview, and page number when reliable page information is available. Text files use line and column. Word-style documents use Open Result for the exact position because Word visual lines are layout-dependent and are not stable document data.
 
 Search results for prose try to show the whole sentence containing the match. If that sentence is very short, the next sentence is included as well.
 
