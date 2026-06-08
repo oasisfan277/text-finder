@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2
+
+- Read only the document name in search results by default instead of the full file path.
+- Added a setting to show the full file path in search results for users who want it.
+
 ## 0.2.1
 
 - Revealed search results immediately and filled Word page and visual line numbers in the background, updating each result in place, instead of holding every result until the whole Word lookup finished.

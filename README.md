@@ -56,8 +56,11 @@ Folder Text Finder adds an NVDA settings panel with these options:
 - Allow direct entry of tabs and line breaks in the search field.
 - Announce invisible characters while typing.
 - Report page numbers when available.
+- Show the full file path in search results.
 
 Standard keyboard navigation remains the default. Advanced direct entry can be enabled by users who need to search for literal tabs or line breaks.
+
+By default, search results read only the document name. Enable "Show the full file path in search results" to include the complete path for each result.
 
 ## Search Statistics
 
@@ -80,7 +83,7 @@ The spoken workflow is intentionally explicit so it can be followed end to end:
 3. Activating Search announces "Searching."
 4. When the search finishes and there are no Word documents in the results, focus moves to the results list, the first result is read, and the search summary is announced.
 5. When the results include Word documents, NVDA announces "Getting Word page and visual line numbers. Please wait." The results are revealed only after the numbers load, prefixed with how many results were updated, followed by the search summary. If the Word lookup fails, the failure is announced and the results are still revealed.
-6. Each result reads as file name, location, full path, and a matching-text preview.
+6. Each result reads as document name, location, and a matching-text preview. The full file path is included only when "Show the full file path in search results" is enabled.
 7. Open Result, or Enter on a result, announces that the result opened at the exact match or at the reported location. Open File on a Word document announces the page and visual line that Word reports.
 8. Search Statistics opens a report you can read or copy to the clipboard.
 

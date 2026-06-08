@@ -74,6 +74,7 @@ def _initialize_config():
 		"allowDirectTabsAndLineBreaks": "boolean(default=False)",
 		"announceInvisibleCharacters": "boolean(default=False)",
 		"reportPageNumbers": "boolean(default=True)",
+		"showFullPath": "boolean(default=False)",
 		"searchWholeWord": "boolean(default=False)",
 		"searchCaseSensitive": "boolean(default=False)",
 		"searchIncludeSubfolders": "boolean(default=False)",
@@ -85,6 +86,7 @@ SETTING_DEFAULTS = {
 	"allowDirectTabsAndLineBreaks": False,
 	"announceInvisibleCharacters": False,
 	"reportPageNumbers": True,
+	"showFullPath": False,
 	"searchWholeWord": False,
 	"searchCaseSensitive": False,
 	"searchIncludeSubfolders": False,
@@ -205,11 +207,16 @@ class FolderTextFinderSettingsPanel(SettingsPanel):
 			wx.CheckBox(self, label=_("Report page numbers when available"))
 		)
 		self.reportPageNumbersCtrl.SetValue(get_setting("reportPageNumbers"))
+		self.showFullPathCtrl = settingsSizerHelper.addItem(
+			wx.CheckBox(self, label=_("Show the full file path in search results"))
+		)
+		self.showFullPathCtrl.SetValue(get_setting("showFullPath"))
 
 	def onSave(self):
 		config.conf[CONFIG_SECTION]["allowDirectTabsAndLineBreaks"] = self.allowDirectTabsAndLineBreaksCtrl.GetValue()
 		config.conf[CONFIG_SECTION]["announceInvisibleCharacters"] = self.announceInvisibleCharactersCtrl.GetValue()
 		config.conf[CONFIG_SECTION]["reportPageNumbers"] = self.reportPageNumbersCtrl.GetValue()
+		config.conf[CONFIG_SECTION]["showFullPath"] = self.showFullPathCtrl.GetValue()
 
 
 def get_current_explorer_folder():
@@ -908,10 +915,16 @@ class StatisticsDialog(wx.Dialog):
 
 
 def format_result_for_list(result):
-	return _("{file}, {location}, {path}, preview: {preview}").format(
+	if get_setting("showFullPath"):
+		return _("{file}, {location}, {path}, preview: {preview}").format(
+			file=result.path.name,
+			location=result.format_location(),
+			path=result.path,
+			preview=result.preview,
+		)
+	return _("{file}, {location}, preview: {preview}").format(
 		file=result.path.name,
 		location=result.format_location(),
-		path=result.path,
 		preview=result.preview,
 	)
 

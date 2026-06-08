@@ -99,6 +99,14 @@ def test_format_result_for_list_contains_location_and_preview():
 	assert "matching text" in formatted
 
 
+def test_format_result_for_list_omits_full_path_by_default():
+	result = SearchResult(path=Path("C:/library/reading/book.txt"), line=1, column=1, preview="x")
+	formatted = format_result_for_list(result)
+	assert "book.txt" in formatted
+	assert "library" not in formatted
+	assert "reading" not in formatted
+
+
 def test_exact_whole_word_search_does_not_match_apostrophe_suffix():
 	text = "sister sister's sisterhood"
 	results = list(find_matches(Path("example.txt"), ExtractedText(text), SearchOptions(query="sister", whole_word=True)))

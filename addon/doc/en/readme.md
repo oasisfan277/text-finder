@@ -34,12 +34,13 @@ Folder Text Finder adds an NVDA settings panel with these options:
 - Allow direct entry of tabs and line breaks in the search field.
 - Announce invisible characters while typing.
 - Report page numbers when available.
+- Show the full file path in search results.
 
 The search dialog also contains a read-only preview of the search text. Spaces, tabs, line breaks, and carriage returns are shown in a readable form so the exact search text can be checked before searching.
 
 ## Results
 
-Results include the file name, full path, location, matching text preview, and page number when reliable page information is available. Text files use line and column. Word-style documents use Open Result for the exact position because Word visual lines are layout-dependent and are not stable document data.
+Results include the document name, location, matching text preview, and page number when reliable page information is available. By default the full file path is not read; enable "Show the full file path in search results" in the settings to include it. Text files use line and column. Word-style documents use Open Result for the exact position because Word visual lines are layout-dependent and are not stable document data.
 
 Search results for prose try to show the whole sentence containing the match. If that sentence is very short, the next sentence is included as well.
 
@@ -60,7 +61,7 @@ The search mode, case sensitivity, Include subfolders, file name filters, and pa
 3. Activating Search announces "Searching."
 4. When the results contain no Word documents, focus moves to the results list, the first result is read, and the search summary is announced.
 5. When the results include Word documents, NVDA announces "Getting Word page and visual line numbers. Please wait." The results are revealed only after the numbers load, prefixed with how many results were updated, followed by the search summary. If the Word lookup fails, the failure is announced and the results are still revealed.
-6. Each result reads as file name, location, full path, and a matching-text preview.
+6. Each result reads as document name, location, and a matching-text preview. The full file path is included only when "Show the full file path in search results" is enabled.
 7. Open Result, or Enter on a result, announces that the result opened at the exact match or at the reported location. Open File on a Word document announces the page and visual line that Word reports.
 8. Search Statistics opens a report you can read or copy to the clipboard.
 
