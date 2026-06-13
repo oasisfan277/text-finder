@@ -18,6 +18,7 @@ from addon.globalPlugins.textFinder import (
 	format_result_for_list,
 	get_active_file_patterns,
 	get_word_active_document_path,
+	word_file_name_from_object_name,
 	normalize_search_folder,
 	normalize_search_target,
 	parse_extension_list,
@@ -47,6 +48,14 @@ class _NoProtectedViewWindows:
 	Count = 0
 
 
+
+
+def test_word_file_name_from_word_window_title():
+	assert word_file_name_from_object_name("Grimm fairytales for bookclub.docx - Word") == "Grimm fairytales for bookclub.docx"
+
+
+def test_word_file_name_from_document_pane_name():
+	assert word_file_name_from_object_name("Grimm fairytales for bookclub.docx") == "Grimm fairytales for bookclub.docx"
 def test_word_active_document_path_uses_active_document():
 	with tempfile.TemporaryDirectory() as temp_dir:
 		path = Path(temp_dir) / "book.docx"

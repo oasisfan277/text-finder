@@ -429,6 +429,10 @@ def normalize_search_folder(candidate):
 
 def get_open_document_target():
 	app_name = get_foreground_app_name()
+	if app_name in {"winword", "word"}:
+		target = get_open_word_document_target_from_nvda()
+		if target:
+			return target
 	app_order = []
 	if app_name in {"winword", "word"}:
 		app_order.append("winword")
@@ -461,6 +465,82 @@ def get_foreground_app_name():
 	except Exception:
 		pass
 	return ""
+
+
+def get_open_word_document_target_from_nvda():
+	document_name = get_foreground_document_file_name({"winword", "word"})
+	if not document_name:
+		return None
+	return find_matching_file_in_shell_windows(document_name)
+
+
+def get_foreground_document_file_name(app_names):
+	try:
+		import api
+
+		for obj in (api.getFocusObject(), api.getForegroundObject(), api.getNavigatorObject()):
+			current = obj
+			seen = set()
+			while current and id(current) not in seen:
+				seen.add(id(current))
+				app_module = getattr(current, "appModule", None)
+				app_name = str(getattr(app_module, "appName", "") or "").lower()
+				if app_name in app_names:
+					name = word_file_name_from_object_name(getattr(current, "name", None))
+					if name:
+						return name
+				current = getattr(current, "parent", None)
+	except Exception:
+		pass
+	return None
+
+
+def word_file_name_from_object_name(name):
+	if not name:
+		return None
+	name = str(name).strip()
+	if name.endswith(" - Word"):
+		name = name[:-7].strip()
+	for suffix in (".docx", ".docm", ".doc", ".rtf"):
+		index = name.lower().find(suffix)
+		if index >= 0:
+			return name[: index + len(suffix)]
+	return None
+
+
+def find_matching_file_in_shell_windows(file_name):
+	matches = []
+	selected_matches = []
+	try:
+		shell = get_shell_application()
+		for window in shell.Windows():
+			try:
+				selected_items = window.Document.SelectedItems()
+				for index in range(selected_items.Count):
+					path = normalize_search_target(selected_items.Item(index).Path)
+					if path and os.path.basename(path).lower() == file_name.lower():
+						selected_matches.append(path)
+						matches.append(path)
+			except Exception:
+				pass
+			try:
+				folder = normalize_search_folder(window.LocationURL)
+				if folder:
+					path = normalize_search_target(os.path.join(folder, file_name))
+					if path:
+						matches.append(path)
+			except Exception:
+				pass
+	except Exception:
+		return None
+	for candidates in (selected_matches, matches):
+		unique = []
+		for path in candidates:
+			if path not in unique:
+				unique.append(path)
+		if len(unique) == 1:
+			return unique[0]
+	return None
 
 
 def get_office_active_document_target(app_name):
