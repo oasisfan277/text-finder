@@ -76,7 +76,7 @@ class SearchStatistics:
 		lines = [
 			"Text Finder Statistics",
 			"",
-			f"Search folder: {self.folder}",
+			f"Search target: {self.folder}",
 			f"Include subfolders: {'yes' if self.options.include_subfolders else 'no'}",
 			f"Search mode: {'exact whole word' if self.options.whole_word else 'exact fragment'}",
 			f"Case sensitive: {'yes' if self.options.case_sensitive else 'no'}",
@@ -103,8 +103,9 @@ class SearchStatistics:
 
 
 class Searcher:
-	def __init__(self, folder: Path, options: SearchOptions):
-		self.folder = folder
+	def __init__(self, target: Path, options: SearchOptions):
+		self.target = target
+		self.folder = target
 		self.options = options
 
 	def search(self) -> tuple[list[SearchResult], SearchStatistics]:
@@ -112,7 +113,7 @@ class Searcher:
 		statistics = SearchStatistics(self.folder, self.options)
 		results: list[SearchResult] = []
 		for path in self._iter_candidate_files():
-			if not self._matches_patterns(path):
+			if not self.target.is_file() and not self._matches_patterns(path):
 				statistics.unsupported_files.append((path, "File does not match the selected file filters."))
 				continue
 			try:
@@ -141,10 +142,12 @@ class Searcher:
 		return results, statistics
 
 	def _iter_candidate_files(self):
-		if self.options.include_subfolders:
-			yield from (path for path in self.folder.rglob("*") if path.is_file())
+		if self.target.is_file():
+			yield self.target
+		elif self.options.include_subfolders:
+			yield from (path for path in self.target.rglob("*") if path.is_file())
 		else:
-			yield from (path for path in self.folder.iterdir() if path.is_file())
+			yield from (path for path in self.target.iterdir() if path.is_file())
 
 	def _matches_patterns(self, path: Path) -> bool:
 		return any(fnmatch.fnmatch(path.name.lower(), pattern.lower()) for pattern in self.options.file_patterns)

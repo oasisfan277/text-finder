@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+
+- Made file-type choices in the settings panel announce their selected or not selected state in the item text for screen reader users.
+- Added search targeting for a focused file, selected file, or supported open Office document instead of only searching folders.
+
 ## 0.3.0
 
 - Completed the rename to Text Finder across the add-on ID, package name, plugin folder, metadata, and documentation.

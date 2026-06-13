@@ -1,0 +1,30 @@
+{
+	"addonId": "textFinder",
+	"addonVersionNumber": {
+		"major": 0,
+		"minor": 3,
+		"patch": 1
+	},
+	"addonVersionName": "0.3.1",
+	"displayName": "Text Finder",
+	"publisher": "Tara",
+	"description": "Search files containing text in the current file, folder, or supported open Office document.",
+	"homepage": "https://github.com/oasisfan277/text-finder",
+	"minNVDAVersion": {
+		"major": 2024,
+		"minor": 1,
+		"patch": 0
+	},
+	"lastTestedVersion": {
+		"major": 2026,
+		"minor": 1,
+		"patch": 0
+	},
+	"channel": "stable",
+	"URL": "https://github.com/oasisfan277/text-finder/releases/download/v0.3.1/textFinder-0.3.1.nvda-addon",
+	"sha256": "41DCFDB01D5B9F378185B8B755E59981D67B14372137B4376F46EA4840FE0A3C",
+	"sourceURL": "https://github.com/oasisfan277/text-finder",
+	"license": "GPL v2",
+	"licenseURL": "https://www.gnu.org/licenses/old-licenses/gpl-2.0.html",
+	"translations": []
+}

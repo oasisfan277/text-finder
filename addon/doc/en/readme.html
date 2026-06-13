@@ -6,14 +6,14 @@
 </head>
 <body>
 <h1>Text Finder</h1>
-<p>Text Finder searches files containing text in the current folder, a selected folder, or the parent folder of a focused file.</p>
+<p>Text Finder searches files containing text in the current folder, a selected folder, a selected file, or a supported Office document that is currently open.</p>
 
 <h2>Privacy and Security</h2>
 <p>All searches are conducted locally on your computer. No files, search terms, document contents, file names, or statistics are uploaded or processed online. The add-on does not use cloud services, online APIs, telemetry, or analytics.</p>
 <p>The Search Statistics report is generated locally and remains available only until another search is started or the add-on is closed.</p>
 
 <h2>Command</h2>
-<p>Press NVDA+Alt+F to open Text Finder from File Explorer. The command can be changed in NVDA's Input Gestures dialog.</p>
+<p>Press NVDA+Alt+F to open Text Finder from File Explorer, a selected file, or a supported open Office document. The command can be changed in NVDA's Input Gestures dialog.</p>
 
 <h2>Searching</h2>
 <p>The search field accepts ordinary text. Exact fragment search matches what you enter literally, including punctuation, repeated spaces, tabs, and line breaks.</p>
@@ -33,10 +33,10 @@
 <li>Announce invisible characters while typing.</li>
 <li>Report page numbers when available.</li>
 <li>Show the full file path in search results.</li>
-<li>Search all supported file types, or only the file types you choose.</li>
+<li>Search all supported file types, or only the file types you choose. Each file type item says Selected or Not selected for screen reader clarity.</li>
 </ul>
 <h3>Choosing Which File Types To Search</h3>
-<p>The file types to search are chosen in the settings panel, not in the search dialog. By default, "Search all supported file types" is enabled, so every type Text Finder understands is searched.</p>
+<p>The file types to search are chosen in the settings panel, not in the search dialog. By default, "Search all supported file types" is enabled, so every type Text Finder understands is searched. Each item in the file type list includes "Selected" or "Not selected" in its name.</p>
 <p>To narrow a search, clear "Search all supported file types" and tick only the file types you want in the "File types to search" list. If you clear the checkbox but tick nothing, Text Finder searches all supported types so a search is never silently empty. Your choice is remembered across NVDA sessions.</p>
 <p>The search dialog also contains a read-only preview of the search text. Spaces, tabs, line breaks, and carriage returns are shown in a readable form so the exact search text can be checked before searching.</p>
 
@@ -51,7 +51,7 @@
 
 <h2>What NVDA Announces During a Search</h2>
 <ol>
-<li>Activating the command announces "Text Finder starting", then "Text Finder opened. Search folder:" followed by the folder. If no folder is detected, it asks you to open a folder or focus a file first.</li>
+<li>Activating the command announces "Text Finder starting", then "Text Finder opened. Search target:" followed by the file or folder. If no target is detected, it asks you to open a folder, focus a file, or open a supported Office document first.</li>
 <li>As you type, the read-only preview updates. With invisible-character announcements enabled, spaces, tabs, and line breaks are announced as you enter them.</li>
 <li>Activating Search announces "Searching."</li>
 <li>When the search finishes, focus moves to the results list, the first result is read, and the search summary is announced.</li>

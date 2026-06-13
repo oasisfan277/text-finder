@@ -1,6 +1,6 @@
 # Text Finder
 
-Text Finder is an NVDA add-on for searching files containing text in the current folder, a selected folder, or the parent folder of a focused file.
+Text Finder is an NVDA add-on for searching files containing text in the current folder, a selected folder, a selected file, or a supported Office document that is currently open.
 
 The add-on is designed for precise local searching. It can search for exact fragments, exact whole words, punctuation, repeated spaces, tabs, and line breaks. Results are presented in an accessible dialog with file, location, preview text, and page number when reliable page information is available. Text files use line and column. Word-style documents use Open Result for the exact position because Word visual lines are layout-dependent and are not stable document data.
 
@@ -50,7 +50,7 @@ Excel and PowerPoint support covers the modern .xlsx and .pptx formats. The olde
 
 Exact fragment search matches the query literally, including punctuation, symbols, spaces, repeated spaces, tabs, line breaks, blank lines, partial words, and parts of file paths.
 
-The file types to search are chosen in the NVDA settings panel rather than in the search dialog. See NVDA Settings below.
+The file types to search are chosen in the NVDA settings panel rather than in the search dialog. Each item in the file type list includes "Selected" or "Not selected" in its name. See NVDA Settings below.
 
 ## NVDA Settings
 
@@ -60,7 +60,7 @@ Text Finder adds an NVDA settings panel with these options:
 - Announce invisible characters while typing.
 - Report page numbers when available.
 - Show the full file path in search results.
-- Search all supported file types, or only the file types you choose.
+- Search all supported file types, or only the file types you choose. Each file type item says Selected or Not selected for screen reader clarity.
 
 Standard keyboard navigation remains the default. Advanced direct entry can be enabled by users who need to search for literal tabs or line breaks.
 
@@ -88,7 +88,7 @@ The search mode (Exact fragment or Exact whole word), case sensitivity, Include 
 
 The spoken workflow is intentionally explicit so it can be followed end to end:
 
-1. Activating the command announces "Text Finder starting." When the dialog opens it announces "Text Finder opened. Search folder:" followed by the folder. If no folder can be detected, it asks you to open a folder or focus a file first.
+1. Activating the command announces "Text Finder starting." When the dialog opens it announces "Text Finder opened. Search target:" followed by the file or folder. If no target can be detected, it asks you to open a folder, focus a file, or open a supported Office document first.
 2. As you type, the read-only preview updates. With invisible-character announcements enabled, spaces, tabs, and line breaks are announced as you enter them.
 3. Activating Search announces "Searching."
 4. When the search finishes, focus moves to the results list, the first result is read, and the search summary is announced.

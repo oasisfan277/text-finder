@@ -1,6 +1,6 @@
 # Text Finder
 
-Text Finder searches files containing text in the current folder, a selected folder, or the parent folder of a focused file.
+Text Finder searches files containing text in the current folder, a selected folder, a selected file, or a supported Office document that is currently open.
 
 ## Privacy and Security
 
@@ -10,7 +10,7 @@ The Search Statistics report is generated locally and remains available only unt
 
 ## Command
 
-Press `NVDA+Alt+F` to open Text Finder from File Explorer. The command can be changed in NVDA's Input Gestures dialog.
+Press `NVDA+Alt+F` to open Text Finder from File Explorer, a selected file, or a supported open Office document. The command can be changed in NVDA's Input Gestures dialog.
 
 ## Searching
 
@@ -35,11 +35,11 @@ Text Finder adds an NVDA settings panel with these options:
 - Announce invisible characters while typing.
 - Report page numbers when available.
 - Show the full file path in search results.
-- Search all supported file types, or only the file types you choose.
+- Search all supported file types, or only the file types you choose. Each file type item says Selected or Not selected for screen reader clarity.
 
 ### Choosing Which File Types To Search
 
-The file types to search are chosen in the settings panel, not in the search dialog. By default, "Search all supported file types" is enabled, so every type Text Finder understands is searched.
+The file types to search are chosen in the settings panel, not in the search dialog. By default, "Search all supported file types" is enabled, so every type Text Finder understands is searched. Each item in the file type list includes "Selected" or "Not selected" in its name.
 
 To narrow a search, clear "Search all supported file types" and tick only the file types you want in the "File types to search" list. If you clear the checkbox but tick nothing, Text Finder searches all supported types so a search is never silently empty. Your choice is remembered across NVDA sessions.
 
@@ -63,7 +63,7 @@ The search mode, case sensitivity, Include subfolders, and page-number reporting
 
 ## What NVDA Announces During a Search
 
-1. Activating the command announces "Text Finder starting", then "Text Finder opened. Search folder:" followed by the folder. If no folder is detected, it asks you to open a folder or focus a file first.
+1. Activating the command announces "Text Finder starting", then "Text Finder opened. Search target:" followed by the file or folder. If no target is detected, it asks you to open a folder, focus a file, or open a supported Office document first.
 2. As you type, the read-only preview updates. With invisible-character announcements enabled, spaces, tabs, and line breaks are announced as you enter them.
 3. Activating Search announces "Searching."
 4. When the search finishes, focus moves to the results list, the first result is read, and the search summary is announced.

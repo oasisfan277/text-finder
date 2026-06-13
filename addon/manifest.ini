@@ -1,9 +1,9 @@
 name = textFinder
 summary = "Text Finder"
-description = "Search files containing text in the current File Explorer folder."
+description = "Search files containing text in the current file, folder, or supported open Office document."
 author = "Tara"
 url = https://github.com/oasisfan277/text-finder
-version = 0.3.0
+version = 0.3.1
 docFileName = readme.html
 minimumNVDAVersion = 2024.1
 lastTestedNVDAVersion = 2026.1

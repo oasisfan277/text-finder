@@ -128,6 +128,11 @@ def get_active_file_patterns():
 	return tuple("*{ext}".format(ext=ext) for ext in selected)
 
 
+
+def file_type_choice_label(label, selected):
+	state = _("Selected") if selected else _("Not selected")
+	return _("{state}: {label}").format(state=state, label=label)
+
 def get_setting(name):
 	try:
 		return config.conf[CONFIG_SECTION][name]
@@ -189,32 +194,32 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		super().terminate()
 
 	@scriptHandler.script(
-		description=_("Search files containing text in the current File Explorer folder"),
+		description=_("Search files containing text in the current file or folder"),
 		gesture="kb:NVDA+alt+f",
 	)
 	def script_openTextFinder(self, gesture):
 		ui.message(_("Text Finder starting."))
 		log_info("Text Finder command started.")
 		try:
-			folder = get_current_explorer_folder()
+			target = get_current_search_target()
 		except Exception:
-			log_exception("Text Finder folder detection crashed.")
-			ui.message(_("Text Finder could not detect the folder."))
+			log_exception("Text Finder target detection crashed.")
+			ui.message(_("Text Finder could not detect the file or folder."))
 			return
-		if not folder:
+		if not target:
 			log_folder_detection_diagnostics()
-			ui.message(_("Open a folder or focus a file before using Text Finder."))
+			ui.message(_("Open a folder, focus a file, or open a supported Office document before using Text Finder."))
 			return
-		log_info("Text Finder opening dialog for folder: %s", folder)
-		wx.CallAfter(self._show_dialog, folder)
+		log_info("Text Finder opening dialog for target: %s", target)
+		wx.CallAfter(self._show_dialog, target)
 
-	def _show_dialog(self, folder):
+	def _show_dialog(self, target):
 		if self._dialog:
 			try:
 				self._dialog.Destroy()
 			except Exception as exc:
 				pass
-		self._dialog = TextFinderDialog(gui.mainFrame, folder)
+		self._dialog = TextFinderDialog(gui.mainFrame, target)
 		self._dialog.Bind(wx.EVT_WINDOW_DESTROY, self._on_dialog_destroy)
 		self._dialog.present()
 
@@ -255,20 +260,33 @@ class TextFinderSettingsPanel(SettingsPanel):
 		self.fileTypesCtrl = settingsSizerHelper.addLabeledControl(
 			_("File types to search:"),
 			wx.CheckListBox,
-			choices=[label for label, _extensions in SUPPORTED_FILE_TYPES],
+			choices=[file_type_choice_label(label, False) for label, _extensions in SUPPORTED_FILE_TYPES],
 		)
+		self.fileTypesCtrl.Bind(wx.EVT_CHECKLISTBOX, self.on_file_type_checked)
 		selected_extensions = set(parse_extension_list(get_setting("searchFileTypes")))
+		select_all_types = get_setting("searchAllFileTypes")
 		for index, (_label, extensions) in enumerate(SUPPORTED_FILE_TYPES):
-			# A type is ticked when any of its extensions was previously chosen.
-			self.fileTypesCtrl.Check(index, any(ext in selected_extensions for ext in extensions))
+			self.fileTypesCtrl.Check(index, select_all_types or any(ext in selected_extensions for ext in extensions))
+		self._update_file_type_choice_labels()
 		self._update_file_types_enabled()
 
 	def on_toggle_all_file_types(self, evt):
+		if self.searchAllFileTypesCtrl.GetValue():
+			for index in range(len(SUPPORTED_FILE_TYPES)):
+				self.fileTypesCtrl.Check(index, True)
+		self._update_file_type_choice_labels()
 		self._update_file_types_enabled()
 		evt.Skip()
 
+	def on_file_type_checked(self, evt):
+		self._update_file_type_choice_labels()
+		evt.Skip()
+
+	def _update_file_type_choice_labels(self):
+		for index, (label, _extensions) in enumerate(SUPPORTED_FILE_TYPES):
+			self.fileTypesCtrl.SetString(index, file_type_choice_label(label, self.fileTypesCtrl.IsChecked(index)))
+
 	def _update_file_types_enabled(self):
-		# The specific-types list only applies when "all file types" is off.
 		self.fileTypesCtrl.Enable(not self.searchAllFileTypesCtrl.GetValue())
 
 	def onSave(self):
@@ -283,15 +301,21 @@ class TextFinderSettingsPanel(SettingsPanel):
 				chosen_extensions.extend(extensions)
 		config.conf[CONFIG_SECTION]["searchFileTypes"] = ";".join(chosen_extensions)
 
+def get_current_search_target():
+	target = get_target_from_focused_object()
+	if target:
+		return target
+	target = get_open_document_target()
+	if target:
+		return target
+	return get_foreground_explorer_target_from_shell()
+
 
 def get_current_explorer_folder():
-	folder = get_folder_from_focused_object()
-	if folder:
-		return folder
-	return get_foreground_explorer_folder_from_shell()
+	return get_current_search_target()
 
 
-def get_folder_from_focused_object():
+def get_target_from_focused_object():
 	try:
 		import api
 
@@ -301,16 +325,16 @@ def get_folder_from_focused_object():
 			while obj and id(obj) not in seen:
 				seen.add(id(obj))
 				for attr in ("location", "value", "name"):
-					folder = normalize_search_folder(getattr(obj, attr, None))
-					if folder:
-						return folder
+					target = normalize_search_target(getattr(obj, attr, None))
+					if target:
+						return target
 				obj = getattr(obj, "parent", None)
 	except Exception:
 		pass
 	return None
 
 
-def get_foreground_explorer_folder_from_shell():
+def get_foreground_explorer_target_from_shell():
 	try:
 		import ctypes
 
@@ -318,40 +342,38 @@ def get_foreground_explorer_folder_from_shell():
 		foreground_hwnd = ctypes.windll.user32.GetForegroundWindow()
 		foreground_root = ctypes.windll.user32.GetAncestor(foreground_hwnd, GA_ROOT) or foreground_hwnd
 		shell = get_shell_application()
-		candidate_folders = []
-		selected_folders = []
+		candidate_targets = []
+		selected_targets = []
 		for window in shell.Windows():
 			try:
-				selected_folder = get_selected_folder_from_shell_window(window)
-				folder = selected_folder or normalize_search_folder(window.LocationURL)
-				if not folder:
+				selected_target = get_selected_target_from_shell_window(window)
+				target = selected_target or normalize_search_target(window.LocationURL)
+				if not target:
 					continue
-				candidate_folders.append(folder)
-				if selected_folder:
-					selected_folders.append(selected_folder)
+				candidate_targets.append(target)
+				if selected_target:
+					selected_targets.append(selected_target)
 				if int(window.HWND) == foreground_root:
-					return folder
+					return target
 			except Exception:
-				last_error = str(exc)
 				continue
-		if len(selected_folders) == 1:
-			return selected_folders[0]
-		if len(candidate_folders) == 1:
-			return candidate_folders[0]
+		if len(selected_targets) == 1:
+			return selected_targets[0]
+		if len(candidate_targets) == 1:
+			return candidate_targets[0]
 	except Exception:
 		return None
 	return None
 
 
-def get_selected_folder_from_shell_window(window):
+def get_selected_target_from_shell_window(window):
 	try:
 		selected_items = window.Document.SelectedItems()
 		if selected_items.Count != 1:
 			return None
-		return normalize_search_folder(selected_items.Item(0).Path)
+		return normalize_search_target(selected_items.Item(0).Path)
 	except Exception:
 		return None
-
 
 def get_shell_application():
 	try:
@@ -379,6 +401,15 @@ def path_from_shell_location_url(location_url):
 	return location_url
 
 
+def normalize_search_target(candidate):
+	if not candidate:
+		return None
+	path = path_from_shell_location_url(str(candidate).strip().strip('"'))
+	path = os.path.expandvars(path)
+	if os.path.isfile(path) or os.path.isdir(path):
+		return path
+	return None
+
 def normalize_search_folder(candidate):
 	if not candidate:
 		return None
@@ -392,6 +423,46 @@ def normalize_search_folder(candidate):
 
 
 
+
+def get_open_document_target():
+	app_name = get_foreground_app_name()
+	if app_name in {"winword", "excel", "powerpnt"}:
+		target = get_office_active_document_target(app_name)
+		if target:
+			return target
+	return None
+
+
+def get_foreground_app_name():
+	try:
+		import api
+
+		for obj in (api.getFocusObject(), api.getForegroundObject()):
+			app_module = getattr(obj, "appModule", None)
+			app_name = getattr(app_module, "appName", None)
+			if app_name:
+				return str(app_name).lower()
+	except Exception:
+		pass
+	return ""
+
+
+def get_office_active_document_target(app_name):
+	try:
+		import win32com.client
+
+		if app_name == "winword":
+			word = win32com.client.Dispatch("Word.Application")
+			return normalize_search_target(word.ActiveDocument.FullName)
+		if app_name == "excel":
+			excel = win32com.client.Dispatch("Excel.Application")
+			return normalize_search_target(excel.ActiveWorkbook.FullName)
+		if app_name == "powerpnt":
+			powerpoint = win32com.client.Dispatch("PowerPoint.Application")
+			return normalize_search_target(powerpoint.ActivePresentation.FullName)
+	except Exception:
+		log_exception("Text Finder could not detect the active Office document.")
+	return None
 def log_folder_detection_diagnostics():
 	try:
 		import api
@@ -449,9 +520,10 @@ def log_shell_window_diagnostics(log):
 		log.info("Text Finder shell diagnostics failed:\n%s", traceback.format_exc())
 
 class TextFinderDialog(wx.Dialog):
-	def __init__(self, parent, folder):
+	def __init__(self, parent, target):
 		super().__init__(parent, title=_("Text Finder"))
-		self.folder = folder
+		self.target = target
+		self.folder = target
 		self.results = []
 		self.statistics = None
 		self._lastQueryValue = ""
@@ -464,12 +536,12 @@ class TextFinderDialog(wx.Dialog):
 		self.Raise()
 		self.SetFocus()
 		self.queryCtrl.SetFocus()
-		ui.message(_("Text Finder opened. Search folder: {folder}").format(folder=self.folder))
-		log_info("Text Finder dialog presented for folder: %s", self.folder)
+		ui.message(_("Text Finder opened. Search target: {folder}").format(folder=self.folder))
+		log_info("Text Finder dialog presented for target: %s", self.folder)
 
 	def _build(self):
 		mainSizer = wx.BoxSizer(wx.VERTICAL)
-		mainSizer.Add(wx.StaticText(self, label=_("Folder: {folder}").format(folder=self.folder)), 0, wx.ALL, 8)
+		mainSizer.Add(wx.StaticText(self, label=_("Search target: {target}").format(target=self.target)), 0, wx.ALL, 8)
 
 		mainSizer.Add(wx.StaticText(self, label=_("&Search text:")), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		self.queryCtrl = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_PROCESS_ENTER)
@@ -594,7 +666,7 @@ class TextFinderDialog(wx.Dialog):
 			ui.message(_("{count} spaces").format(count=run))
 
 	def _run_search(self, options):
-		searcher = Searcher(Path(self.folder), options)
+		searcher = Searcher(Path(self.target), options)
 		results, statistics = searcher.search()
 		wx.CallAfter(self._finish_search, results, statistics)
 

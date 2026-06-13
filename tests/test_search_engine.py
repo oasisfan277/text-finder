@@ -6,15 +6,18 @@ from scripts.package_addon import build_package
 from addon.globalPlugins.textFinder.search_engine import (
 	SearchOptions,
 	SearchResult,
+	Searcher,
 	find_matches,
 	line_column_for_offset,
 	literal_spans,
 	preview_for_span,
 )
 from addon.globalPlugins.textFinder import (
+	file_type_choice_label,
 	format_result_for_list,
 	get_active_file_patterns,
 	normalize_search_folder,
+	normalize_search_target,
 	parse_extension_list,
 	path_from_shell_location_url,
 	render_invisible_text,
@@ -25,6 +28,11 @@ from addon.globalPlugins.textFinder.text_extractors import (
 	extract_text,
 )
 
+
+
+def test_file_type_choice_label_includes_selection_state():
+	assert file_type_choice_label("Word documents (.docx)", True) == "Selected: Word documents (.docx)"
+	assert file_type_choice_label("PDF documents (.pdf)", False) == "Not selected: PDF documents (.pdf)"
 
 def test_literal_search_matches_punctuation_and_partial_words():
 	text = "alpha C:\\Users\\Tara\\file-name.txt omega"
@@ -86,6 +94,13 @@ def test_package_contains_manifest_plugin_and_html_guide():
 	assert "doc/en/readme.html" in names
 
 
+
+def test_normalize_search_target_accepts_file():
+	with tempfile.TemporaryDirectory() as temp_dir:
+		path = Path(temp_dir) / "chapter.txt"
+		path.write_text("hello", encoding="utf-8")
+		assert normalize_search_target(str(path)) == str(path)
+
 def test_normalize_search_folder_accepts_folder():
 	with tempfile.TemporaryDirectory() as temp_dir:
 		folder = Path(temp_dir) / "books"
@@ -101,6 +116,16 @@ def test_normalize_search_folder_uses_parent_for_file():
 		book.write_text("hello", encoding="utf-8")
 		assert normalize_search_folder(str(book)) == str(folder)
 
+
+
+def test_searcher_searches_single_file_even_when_filter_excludes_it():
+	with tempfile.TemporaryDirectory() as temp_dir:
+		path = Path(temp_dir) / "chapter.txt"
+		path.write_text("needle", encoding="utf-8")
+		results, statistics = Searcher(path, SearchOptions(query="needle", file_patterns=("*.docx",))).search()
+		assert len(results) == 1
+		assert results[0].path == path
+		assert statistics.supported_files_searched == 1
 
 def test_format_result_for_list_contains_location_and_preview():
 	result = SearchResult(path=Path("book.txt"), line=3, column=5, preview="matching text")
