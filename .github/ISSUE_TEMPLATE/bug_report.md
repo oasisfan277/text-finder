@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a problem with Folder Text Finder
+about: Report a problem with Text Finder
 title: ""
 labels: bug
 assignees: ""
@@ -27,6 +27,6 @@ Paste the Search Statistics report here if it is available.
 ## Environment
 
 - NVDA version:
-- Folder Text Finder version:
+- Text Finder version:
 - Windows version:
 

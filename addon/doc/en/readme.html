@@ -2,18 +2,18 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Folder Text Finder</title>
+<title>Text Finder</title>
 </head>
 <body>
-<h1>Folder Text Finder</h1>
-<p>Folder Text Finder searches files containing text in the current folder, a selected folder, or the parent folder of a focused file.</p>
+<h1>Text Finder</h1>
+<p>Text Finder searches files containing text in the current folder, a selected folder, or the parent folder of a focused file.</p>
 
 <h2>Privacy and Security</h2>
 <p>All searches are conducted locally on your computer. No files, search terms, document contents, file names, or statistics are uploaded or processed online. The add-on does not use cloud services, online APIs, telemetry, or analytics.</p>
 <p>The Search Statistics report is generated locally and remains available only until another search is started or the add-on is closed.</p>
 
 <h2>Command</h2>
-<p>Press NVDA+Alt+F to open Folder Text Finder from File Explorer. The command can be changed in NVDA's Input Gestures dialog.</p>
+<p>Press NVDA+Alt+F to open Text Finder from File Explorer. The command can be changed in NVDA's Input Gestures dialog.</p>
 
 <h2>Searching</h2>
 <p>The search field accepts ordinary text. Exact fragment search matches what you enter literally, including punctuation, repeated spaces, tabs, and line breaks.</p>
@@ -27,38 +27,43 @@
 <p>An advanced setting allows direct entry of tabs and line breaks in the search field.</p>
 
 <h2>Settings</h2>
-<p>Folder Text Finder adds an NVDA settings panel with these options:</p>
+<p>Text Finder adds an NVDA settings panel with these options:</p>
 <ul>
 <li>Allow direct entry of tabs and line breaks in the search field.</li>
 <li>Announce invisible characters while typing.</li>
 <li>Report page numbers when available.</li>
 <li>Show the full file path in search results.</li>
+<li>Search all supported file types, or only the file types you choose.</li>
 </ul>
+<h3>Choosing Which File Types To Search</h3>
+<p>The file types to search are chosen in the settings panel, not in the search dialog. By default, "Search all supported file types" is enabled, so every type Text Finder understands is searched.</p>
+<p>To narrow a search, clear "Search all supported file types" and tick only the file types you want in the "File types to search" list. If you clear the checkbox but tick nothing, Text Finder searches all supported types so a search is never silently empty. Your choice is remembered across NVDA sessions.</p>
 <p>The search dialog also contains a read-only preview of the search text. Spaces, tabs, line breaks, and carriage returns are shown in a readable form so the exact search text can be checked before searching.</p>
 
 <h2>Results</h2>
 <p>Results include the document name, location, matching text preview, and page number when reliable page information is available. By default the full file path is not read; enable "Show the full file path in search results" in the settings to include it. Text files use line and column. Word-style documents use Open Result for the exact position because Word visual lines are layout-dependent and are not stable document data.</p><p>Search results for prose try to show the whole sentence containing the match. If that sentence is very short, the next sentence is included as well.</p>
 <p>Use Open Result, or press Enter on a selected result, to open the extracted document text at the exact match. Use Open File to open the original file.</p>
-<p>For DOCX files, the add-on asks Microsoft Word for live page and visual line numbers after the search completes. While those numbers load, the results are held back instead of being announced with incomplete locations. NVDA reports that it is getting Word page and visual line numbers, and then reveals the finished results in one pass. If Word cannot supply the numbers, the results are still revealed using the Open Result position so the list is never left silent.</p>
+<p>For DOCX files, the add-on asks Microsoft Word for live page and visual line numbers after the search completes. Results are revealed straight away, and the Word page and visual line numbers are filled in afterwards in the background, updating each result in place as Word reports it. While a Word result is still loading its numbers it reads as "Word location loading". If Word cannot supply the numbers, the result falls back to the Open Result position so the list is never left stuck.</p>
 <p>Page numbers are reported when available. The add-on does not estimate or invent page numbers.</p>
 
 <h2>Remembered Search Options</h2>
-<p>The search mode, case sensitivity, Include subfolders, file name filters, and page-number reporting are remembered each time you search and restored the next time you open Folder Text Finder. The settings persist across NVDA sessions.</p>
+<p>The search mode, case sensitivity, Include subfolders, and page-number reporting are remembered each time you search and restored the next time you open Text Finder. The file types to search and all other settings are kept in the settings panel. These choices persist across NVDA sessions.</p>
 
 <h2>What NVDA Announces During a Search</h2>
 <ol>
-<li>Activating the command announces "Folder Text Finder starting", then "Folder Text Finder opened. Search folder:" followed by the folder. If no folder is detected, it asks you to open a folder or focus a file first.</li>
+<li>Activating the command announces "Text Finder starting", then "Text Finder opened. Search folder:" followed by the folder. If no folder is detected, it asks you to open a folder or focus a file first.</li>
 <li>As you type, the read-only preview updates. With invisible-character announcements enabled, spaces, tabs, and line breaks are announced as you enter them.</li>
 <li>Activating Search announces "Searching."</li>
-<li>When the results contain no Word documents, focus moves to the results list, the first result is read, and the search summary is announced.</li>
-<li>When the results include Word documents, NVDA announces "Getting Word page and visual line numbers. Please wait." The results are revealed only after the numbers load, prefixed with how many results were updated, followed by the search summary. If the Word lookup fails, the failure is announced and the results are still revealed.</li>
+<li>When the search finishes, focus moves to the results list, the first result is read, and the search summary is announced.</li>
+<li>When the results include Word documents, NVDA announces that it is getting Word page and visual line numbers in the background, then announces how many results were updated once the numbers are ready.</li>
 <li>Each result reads as document name, location, and a matching-text preview. The full file path is included only when "Show the full file path in search results" is enabled.</li>
 <li>Open Result, or Enter on a result, announces that the result opened at the exact match or at the reported location. Open File on a Word document announces the page and visual line that Word reports.</li>
 <li>Search Statistics opens a report you can read or copy to the clipboard.</li>
 </ol>
 
 <h2>Supported Files</h2>
-<p>Folder Text Finder searches common files with extractable text, including plain text, source code, markup files, DOCX, RTF, ODT, and text-based PDF documents when local PDF text extraction support is available.</p>
+<p>Text Finder searches common files with extractable text, including plain text, source code, markup files, DOCX, RTF, ODT, Excel workbooks (.xlsx), PowerPoint presentations (.pptx), and text-based PDF documents when local PDF text extraction support is available.</p>
+<p>Excel and PowerPoint support covers the modern .xlsx and .pptx formats. The older binary .xls and .ppt formats are not searched.</p>
 <p>Image-only or scanned PDFs are not OCR'd.</p>
 
 <h2>Search Statistics</h2>

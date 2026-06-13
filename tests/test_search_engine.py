@@ -11,8 +11,19 @@ from addon.globalPlugins.folderTextFinder.search_engine import (
 	literal_spans,
 	preview_for_span,
 )
-from addon.globalPlugins.folderTextFinder import format_result_for_list, normalize_search_folder, path_from_shell_location_url, render_invisible_text
-from addon.globalPlugins.folderTextFinder.text_extractors import ExtractedText
+from addon.globalPlugins.folderTextFinder import (
+	format_result_for_list,
+	get_active_file_patterns,
+	normalize_search_folder,
+	parse_extension_list,
+	path_from_shell_location_url,
+	render_invisible_text,
+)
+from addon.globalPlugins.folderTextFinder.text_extractors import (
+	ExtractedText,
+	all_supported_extensions,
+	extract_text,
+)
 
 
 def test_literal_search_matches_punctuation_and_partial_words():
@@ -180,3 +191,52 @@ def test_text_result_location_uses_line_label():
 def test_word_visual_line_location_omits_column():
 	result = SearchResult(path=Path("book.docx"), line=12, column=0, preview="match", page=3, location_unit="Visual line")
 	assert result.format_location() == "Page 3, visual line 12"
+
+
+def _write_zip(path: Path, members: dict[str, str]) -> None:
+	with zipfile.ZipFile(path, "w") as archive:
+		for name, content in members.items():
+			archive.writestr(name, content)
+
+
+def test_extract_xlsx_reads_shared_strings():
+	with tempfile.TemporaryDirectory() as temp_dir:
+		path = Path(temp_dir) / "book.xlsx"
+		_write_zip(path, {
+			"xl/sharedStrings.xml": (
+				'<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+				'<si><t>Quarterly revenue</t></si><si><t>hidden keyword</t></si></sst>'
+			),
+		})
+		extracted = extract_text(path)
+		assert "Quarterly revenue" in extracted.text
+		assert "hidden keyword" in extracted.text
+
+
+def test_extract_pptx_reads_slide_text_in_order():
+	with tempfile.TemporaryDirectory() as temp_dir:
+		path = Path(temp_dir) / "deck.pptx"
+		_write_zip(path, {
+			"ppt/slides/slide2.xml": '<p:sld xmlns:p="p" xmlns:a="a"><a:t>Second slide</a:t></p:sld>',
+			"ppt/slides/slide1.xml": '<p:sld xmlns:p="p" xmlns:a="a"><a:t>First</a:t><a:t>slide</a:t></p:sld>',
+		})
+		extracted = extract_text(path)
+		assert extracted.text == "First slide\nSecond slide"
+
+
+def test_xlsx_and_pptx_are_supported_types():
+	extensions = all_supported_extensions()
+	assert ".xlsx" in extensions
+	assert ".pptx" in extensions
+
+
+def test_parse_extension_list_normalizes_entries():
+	assert parse_extension_list("txt; .docx ;PDF") == [".txt", ".docx", ".pdf"]
+	assert parse_extension_list("") == []
+
+
+def test_active_file_patterns_default_to_all_supported_types():
+	patterns = get_active_file_patterns()
+	assert "*.xlsx" in patterns
+	assert "*.pptx" in patterns
+	assert "*.docx" in patterns

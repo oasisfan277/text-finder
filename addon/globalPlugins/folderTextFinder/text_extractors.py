@@ -23,6 +23,37 @@ PLAIN_TEXT_EXTENSIONS = {
 }
 
 
+# Single source of truth for the file types Text Finder can search. Each entry
+# is a (display label, tuple of file extensions). The settings panel builds its
+# file-type list from this, and the search engine builds its default file
+# filters from this, so adding a new supported type only needs one change here.
+SUPPORTED_FILE_TYPES = (
+	("Plain text and logs (.txt, .log)", (".txt", ".log")),
+	("Markdown (.md)", (".md",)),
+	("Comma separated values (.csv)", (".csv",)),
+	("Configuration files (.ini)", (".ini",)),
+	("JSON (.json)", (".json",)),
+	("XML (.xml)", (".xml",)),
+	("Web pages (.html, .htm)", (".html", ".htm")),
+	("Style sheets (.css)", (".css",)),
+	("JavaScript (.js)", (".js",)),
+	("Python (.py)", (".py",)),
+	("Word documents (.docx)", (".docx",)),
+	("Rich text (.rtf)", (".rtf",)),
+	("OpenDocument text (.odt)", (".odt",)),
+	("Excel workbooks (.xlsx)", (".xlsx",)),
+	("PowerPoint presentations (.pptx)", (".pptx",)),
+	("PDF documents (.pdf)", (".pdf",)),
+)
+
+
+def all_supported_extensions() -> tuple[str, ...]:
+	extensions: list[str] = []
+	for _label, type_extensions in SUPPORTED_FILE_TYPES:
+		extensions.extend(type_extensions)
+	return tuple(extensions)
+
+
 @dataclass(frozen=True)
 class ExtractedText:
 	text: str
@@ -54,6 +85,10 @@ def extract_text(path: Path) -> ExtractedText:
 		return ExtractedText(rtf_to_text(read_text_file(path)))
 	if extension == ".odt":
 		return extract_odt(path)
+	if extension == ".xlsx":
+		return extract_xlsx(path)
+	if extension == ".pptx":
+		return extract_pptx(path)
 	if extension == ".pdf":
 		return extract_pdf(path)
 	raise TextExtractionError("unsupported", "Unsupported file type.")
@@ -119,6 +154,81 @@ def extract_odt(path: Path) -> ExtractedText:
 			paragraphs.append(element.text)
 	text = "\n".join(part.strip() for part in paragraphs if part.strip())
 	if not text:
+		raise TextExtractionError("empty", "No extractable text found.")
+	return ExtractedText(text)
+
+
+def _local_tag(element) -> str:
+	return element.tag.rsplit("}", 1)[-1]
+
+
+def _ordered_zip_members(archive: zipfile.ZipFile, prefix: str, suffix: str) -> list[str]:
+	# Office stores sheets and slides as sheet1.xml, sheet2.xml, slide1.xml and so
+	# on. The zip directory order is not guaranteed, so sort by the trailing
+	# number to keep workbook and presentation order stable.
+	members = [name for name in archive.namelist() if name.startswith(prefix) and name.endswith(suffix)]
+
+	def sort_key(name: str) -> tuple[int, str]:
+		digits = re.findall(r"(\d+)", name.rsplit("/", 1)[-1])
+		return (int(digits[-1]) if digits else 0, name)
+
+	return sorted(members, key=sort_key)
+
+
+def extract_xlsx(path: Path) -> ExtractedText:
+	try:
+		archive = zipfile.ZipFile(path)
+	except zipfile.BadZipFile as exc:
+		raise TextExtractionError("unreadable", "Excel file is not a valid zip document.") from exc
+	parts: list[str] = []
+	try:
+		with archive:
+			# Shared strings hold the text content for most workbooks.
+			if "xl/sharedStrings.xml" in archive.namelist():
+				shared_root = ElementTree.fromstring(archive.read("xl/sharedStrings.xml"))
+				for node in shared_root.iter():
+					if _local_tag(node) == "t" and node.text:
+						parts.append(node.text)
+			# Some workbooks store text inline in the worksheets instead.
+			for member in _ordered_zip_members(archive, "xl/worksheets/", ".xml"):
+				try:
+					sheet_root = ElementTree.fromstring(archive.read(member))
+				except ElementTree.ParseError:
+					continue
+				for is_node in sheet_root.iter():
+					if _local_tag(is_node) != "is":
+						continue
+					for text_node in is_node.iter():
+						if _local_tag(text_node) == "t" and text_node.text:
+							parts.append(text_node.text)
+	except KeyError as exc:
+		raise TextExtractionError("empty", "Excel workbook text was not found.") from exc
+	text = "\n".join(part for part in parts if part.strip())
+	if not text.strip():
+		raise TextExtractionError("empty", "No extractable text found.")
+	return ExtractedText(text)
+
+
+def extract_pptx(path: Path) -> ExtractedText:
+	try:
+		archive = zipfile.ZipFile(path)
+	except zipfile.BadZipFile as exc:
+		raise TextExtractionError("unreadable", "PowerPoint file is not a valid zip document.") from exc
+	slides: list[str] = []
+	try:
+		with archive:
+			for member in _ordered_zip_members(archive, "ppt/slides/slide", ".xml"):
+				try:
+					slide_root = ElementTree.fromstring(archive.read(member))
+				except ElementTree.ParseError:
+					continue
+				runs = [node.text for node in slide_root.iter() if _local_tag(node) == "t" and node.text]
+				if runs:
+					slides.append(" ".join(runs))
+	except KeyError as exc:
+		raise TextExtractionError("empty", "PowerPoint slide text was not found.") from exc
+	text = "\n".join(slide for slide in slides if slide.strip())
+	if not text.strip():
 		raise TextExtractionError("empty", "No extractable text found.")
 	return ExtractedText(text)
 

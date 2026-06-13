@@ -1,6 +1,6 @@
 # Security Policy
 
-Folder Text Finder is designed to process files locally on the user's computer.
+Text Finder is designed to process files locally on the user's computer.
 
 The add-on must not upload search queries, file names, file contents, document contents, statistics, telemetry, or analytics to any online service.
 

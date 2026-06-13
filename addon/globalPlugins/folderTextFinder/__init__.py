@@ -54,7 +54,12 @@ except ModuleNotFoundError:
 	wx = _WX()
 
 from .search_engine import SearchOptions, Searcher
-from .text_extractors import TextExtractionError, extract_text
+from .text_extractors import (
+	SUPPORTED_FILE_TYPES,
+	TextExtractionError,
+	all_supported_extensions,
+	extract_text,
+)
 
 
 try:
@@ -64,7 +69,6 @@ except NameError:
 
 
 CONFIG_SECTION = "folderTextFinder"
-DEFAULT_FILE_FILTERS = "*.txt;*.md;*.log;*.ini;*.csv;*.json;*.xml;*.html;*.htm;*.css;*.js;*.py;*.docx;*.rtf;*.odt;*.pdf"
 
 
 def _initialize_config():
@@ -78,7 +82,8 @@ def _initialize_config():
 		"searchWholeWord": "boolean(default=False)",
 		"searchCaseSensitive": "boolean(default=False)",
 		"searchIncludeSubfolders": "boolean(default=False)",
-		"searchFileFilters": "string(default='')",
+		"searchAllFileTypes": "boolean(default=True)",
+		"searchFileTypes": "string(default='')",
 	}
 
 
@@ -90,8 +95,37 @@ SETTING_DEFAULTS = {
 	"searchWholeWord": False,
 	"searchCaseSensitive": False,
 	"searchIncludeSubfolders": False,
-	"searchFileFilters": "",
+	"searchAllFileTypes": True,
+	"searchFileTypes": "",
 }
+
+
+def parse_extension_list(value):
+	extensions = []
+	for part in (value or "").split(";"):
+		part = part.strip().lower()
+		if not part:
+			continue
+		if not part.startswith("."):
+			part = "." + part
+		if part not in extensions:
+			extensions.append(part)
+	return extensions
+
+
+def get_active_file_patterns():
+	# Build the search file filters from the settings panel choice instead of a
+	# per-search text box. "All supported file types" searches every type Text
+	# Finder understands; otherwise only the user's selected types are searched.
+	if get_setting("searchAllFileTypes"):
+		selected = all_supported_extensions()
+	else:
+		selected = tuple(parse_extension_list(get_setting("searchFileTypes")))
+		if not selected:
+			# Nothing chosen falls back to all supported types so a search is
+			# never silently empty.
+			selected = all_supported_extensions()
+	return tuple("*{ext}".format(ext=ext) for ext in selected)
 
 
 def get_setting(name):
@@ -107,7 +141,7 @@ def set_setting(name, value):
 	try:
 		config.conf[CONFIG_SECTION][name] = value
 	except Exception:
-		log_exception("Folder Text Finder could not save the {name} setting.".format(name=name))
+		log_exception("Text Finder could not save the {name} setting.".format(name=name))
 
 
 def save_config():
@@ -116,7 +150,7 @@ def save_config():
 	try:
 		config.conf.save()
 	except Exception:
-		log_exception("Folder Text Finder could not persist its configuration.")
+		log_exception("Text Finder could not persist its configuration.")
 
 
 _initialize_config()
@@ -141,7 +175,7 @@ def log_exception(message):
 
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
-	scriptCategory = _("Folder Text Finder")
+	scriptCategory = _("Text Finder")
 
 	def __init__(self):
 		super().__init__()
@@ -159,19 +193,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		gesture="kb:NVDA+alt+f",
 	)
 	def script_openFolderTextFinder(self, gesture):
-		ui.message(_("Folder Text Finder starting."))
-		log_info("Folder Text Finder command started.")
+		ui.message(_("Text Finder starting."))
+		log_info("Text Finder command started.")
 		try:
 			folder = get_current_explorer_folder()
 		except Exception:
-			log_exception("Folder Text Finder folder detection crashed.")
-			ui.message(_("Folder Text Finder could not detect the folder."))
+			log_exception("Text Finder folder detection crashed.")
+			ui.message(_("Text Finder could not detect the folder."))
 			return
 		if not folder:
 			log_folder_detection_diagnostics()
-			ui.message(_("Open a folder or focus a file before using Folder Text Finder."))
+			ui.message(_("Open a folder or focus a file before using Text Finder."))
 			return
-		log_info("Folder Text Finder opening dialog for folder: %s", folder)
+		log_info("Text Finder opening dialog for folder: %s", folder)
 		wx.CallAfter(self._show_dialog, folder)
 
 	def _show_dialog(self, folder):
@@ -191,7 +225,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 
 class FolderTextFinderSettingsPanel(SettingsPanel):
-	title = _("Folder Text Finder")
+	title = _("Text Finder")
 
 	def makeSettings(self, settingsSizer):
 		settingsSizerHelper = guiHelper.BoxSizerHelper(self, sizer=settingsSizer)
@@ -212,11 +246,42 @@ class FolderTextFinderSettingsPanel(SettingsPanel):
 		)
 		self.showFullPathCtrl.SetValue(get_setting("showFullPath"))
 
+		self.searchAllFileTypesCtrl = settingsSizerHelper.addItem(
+			wx.CheckBox(self, label=_("Search all supported file types"))
+		)
+		self.searchAllFileTypesCtrl.SetValue(get_setting("searchAllFileTypes"))
+		self.searchAllFileTypesCtrl.Bind(wx.EVT_CHECKBOX, self.on_toggle_all_file_types)
+
+		self.fileTypesCtrl = settingsSizerHelper.addLabeledControl(
+			_("File types to search:"),
+			wx.CheckListBox,
+			choices=[label for label, _extensions in SUPPORTED_FILE_TYPES],
+		)
+		selected_extensions = set(parse_extension_list(get_setting("searchFileTypes")))
+		for index, (_label, extensions) in enumerate(SUPPORTED_FILE_TYPES):
+			# A type is ticked when any of its extensions was previously chosen.
+			self.fileTypesCtrl.Check(index, any(ext in selected_extensions for ext in extensions))
+		self._update_file_types_enabled()
+
+	def on_toggle_all_file_types(self, evt):
+		self._update_file_types_enabled()
+		evt.Skip()
+
+	def _update_file_types_enabled(self):
+		# The specific-types list only applies when "all file types" is off.
+		self.fileTypesCtrl.Enable(not self.searchAllFileTypesCtrl.GetValue())
+
 	def onSave(self):
 		config.conf[CONFIG_SECTION]["allowDirectTabsAndLineBreaks"] = self.allowDirectTabsAndLineBreaksCtrl.GetValue()
 		config.conf[CONFIG_SECTION]["announceInvisibleCharacters"] = self.announceInvisibleCharactersCtrl.GetValue()
 		config.conf[CONFIG_SECTION]["reportPageNumbers"] = self.reportPageNumbersCtrl.GetValue()
 		config.conf[CONFIG_SECTION]["showFullPath"] = self.showFullPathCtrl.GetValue()
+		config.conf[CONFIG_SECTION]["searchAllFileTypes"] = self.searchAllFileTypesCtrl.GetValue()
+		chosen_extensions = []
+		for index, (_label, extensions) in enumerate(SUPPORTED_FILE_TYPES):
+			if self.fileTypesCtrl.IsChecked(index):
+				chosen_extensions.extend(extensions)
+		config.conf[CONFIG_SECTION]["searchFileTypes"] = ";".join(chosen_extensions)
 
 
 def get_current_explorer_folder():
@@ -333,9 +398,9 @@ def log_folder_detection_diagnostics():
 		import logHandler
 
 		log = logHandler.log
-		log.info("Folder Text Finder folder detection failed. Starting diagnostics.")
+		log.info("Text Finder folder detection failed. Starting diagnostics.")
 		for label, obj in (("focus", api.getFocusObject()), ("foreground", api.getForegroundObject()), ("navigator", api.getNavigatorObject())):
-			log.info("Folder Text Finder %s object chain:", label)
+			log.info("Text Finder %s object chain:", label)
 			seen = set()
 			depth = 0
 			while obj and id(obj) not in seen and depth < 8:
@@ -356,7 +421,7 @@ def log_folder_detection_diagnostics():
 	except Exception:
 		try:
 			import logHandler
-			logHandler.log.error("Folder Text Finder diagnostics failed:\n%s", traceback.format_exc())
+			logHandler.log.error("Text Finder diagnostics failed:\n%s", traceback.format_exc())
 		except Exception:
 			pass
 
@@ -368,24 +433,24 @@ def log_shell_window_diagnostics(log):
 		GA_ROOT = 2
 		foreground_hwnd = ctypes.windll.user32.GetForegroundWindow()
 		foreground_root = ctypes.windll.user32.GetAncestor(foreground_hwnd, GA_ROOT) or foreground_hwnd
-		log.info("Folder Text Finder foreground hwnd=%r root=%r", foreground_hwnd, foreground_root)
+		log.info("Text Finder foreground hwnd=%r root=%r", foreground_hwnd, foreground_root)
 		shell = get_shell_application()
 		for index, window in enumerate(shell.Windows()):
 			try:
-				log.info("Folder Text Finder shell window %s hwnd=%r url=%r normalized=%r", index, int(window.HWND), window.LocationURL, normalize_search_folder(window.LocationURL))
+				log.info("Text Finder shell window %s hwnd=%r url=%r normalized=%r", index, int(window.HWND), window.LocationURL, normalize_search_folder(window.LocationURL))
 				selected_items = window.Document.SelectedItems()
-				log.info("Folder Text Finder shell window %s selected count=%r", index, selected_items.Count)
+				log.info("Text Finder shell window %s selected count=%r", index, selected_items.Count)
 				for item_index in range(selected_items.Count):
 					item = selected_items.Item(item_index)
-					log.info("Folder Text Finder selected item %s path=%r normalized=%r", item_index, item.Path, normalize_search_folder(item.Path))
+					log.info("Text Finder selected item %s path=%r normalized=%r", item_index, item.Path, normalize_search_folder(item.Path))
 			except Exception:
-				log.info("Folder Text Finder shell window %s diagnostics failed:\n%s", index, traceback.format_exc())
+				log.info("Text Finder shell window %s diagnostics failed:\n%s", index, traceback.format_exc())
 	except Exception:
-		log.info("Folder Text Finder shell diagnostics failed:\n%s", traceback.format_exc())
+		log.info("Text Finder shell diagnostics failed:\n%s", traceback.format_exc())
 
 class FolderTextFinderDialog(wx.Dialog):
 	def __init__(self, parent, folder):
-		super().__init__(parent, title=_("Folder Text Finder"))
+		super().__init__(parent, title=_("Text Finder"))
 		self.folder = folder
 		self.results = []
 		self.statistics = None
@@ -399,8 +464,8 @@ class FolderTextFinderDialog(wx.Dialog):
 		self.Raise()
 		self.SetFocus()
 		self.queryCtrl.SetFocus()
-		ui.message(_("Folder Text Finder opened. Search folder: {folder}").format(folder=self.folder))
-		log_info("Folder Text Finder dialog presented for folder: %s", self.folder)
+		ui.message(_("Text Finder opened. Search folder: {folder}").format(folder=self.folder))
+		log_info("Text Finder dialog presented for folder: %s", self.folder)
 
 	def _build(self):
 		mainSizer = wx.BoxSizer(wx.VERTICAL)
@@ -427,14 +492,12 @@ class FolderTextFinderDialog(wx.Dialog):
 		self.subfoldersCtrl.SetValue(get_setting("searchIncludeSubfolders"))
 		self.reportPagesCtrl = wx.CheckBox(self, label=_("Report &page numbers when available"))
 		self.reportPagesCtrl.SetValue(get_setting("reportPageNumbers"))
-		self.filterCtrl = wx.TextCtrl(self, value=get_setting("searchFileFilters") or DEFAULT_FILE_FILTERS)
 
 		mainSizer.Add(searchModeSizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		mainSizer.Add(self.caseCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		mainSizer.Add(self.subfoldersCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		mainSizer.Add(self.reportPagesCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
-		mainSizer.Add(wx.StaticText(self, label=_("File name &filters:")), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
-		mainSizer.Add(self.filterCtrl, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+		# File types to search are chosen in the NVDA settings panel, not here.
 
 		mainSizer.Add(wx.StaticText(self, label=_("Search &results:")), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		self.resultsCtrl = wx.ListBox(self, style=wx.LB_SINGLE)
@@ -476,12 +539,12 @@ class FolderTextFinderDialog(wx.Dialog):
 			whole_word=self.exactWholeWordCtrl.GetValue(),
 			case_sensitive=self.caseCtrl.GetValue(),
 			include_subfolders=self.subfoldersCtrl.GetValue(),
-			file_patterns=tuple(pattern.strip() for pattern in self.filterCtrl.GetValue().split(";") if pattern.strip()),
+			file_patterns=get_active_file_patterns(),
 			report_page_numbers=self.reportPagesCtrl.GetValue(),
 		)
 		self._save_search_options(options)
 		log_info(
-			"Folder Text Finder search started. mode=%s case_sensitive=%s include_subfolders=%s filter_count=%d query_length=%d report_pages=%s",
+			"Text Finder search started. mode=%s case_sensitive=%s include_subfolders=%s filter_count=%d query_length=%d report_pages=%s",
 			"whole word" if options.whole_word else "fragment",
 			options.case_sensitive,
 			options.include_subfolders,
@@ -496,7 +559,6 @@ class FolderTextFinderDialog(wx.Dialog):
 		set_setting("searchWholeWord", options.whole_word)
 		set_setting("searchCaseSensitive", options.case_sensitive)
 		set_setting("searchIncludeSubfolders", options.include_subfolders)
-		set_setting("searchFileFilters", self.filterCtrl.GetValue())
 		set_setting("reportPageNumbers", options.report_page_numbers)
 		save_config()
 
@@ -544,7 +606,7 @@ class FolderTextFinderDialog(wx.Dialog):
 		self.searchButton.Enable()
 		has_docx = self._has_docx_results(results)
 		log_info(
-			"Folder Text Finder search complete. results=%d files_with_matches=%d duration=%.2f has_docx=%s",
+			"Text Finder search complete. results=%d files_with_matches=%d duration=%.2f has_docx=%s",
 			len(results),
 			len(statistics.files_with_matches),
 			statistics.duration,
@@ -565,7 +627,7 @@ class FolderTextFinderDialog(wx.Dialog):
 
 	def start_word_location_enrichment(self, results, generation):
 		docx_count = sum(1 for result in results if result.path.suffix.lower() == ".docx")
-		log_info("Folder Text Finder getting Word locations for %d DOCX results in the background.", docx_count)
+		log_info("Text Finder getting Word locations for %d DOCX results in the background.", docx_count)
 		ui.message(_("Getting Word page and visual line numbers in the background."))
 		thread = threading.Thread(target=self.enrich_word_locations, args=(results, generation), daemon=True)
 		thread.start()
@@ -596,9 +658,9 @@ class FolderTextFinderDialog(wx.Dialog):
 						try:
 							document.Close(False)
 						except Exception:
-							log_exception("Folder Text Finder could not close the hidden Word document.")
+							log_exception("Text Finder could not close the hidden Word document.")
 				except Exception:
-					log_exception("Folder Text Finder could not enrich DOCX result locations in the background.")
+					log_exception("Text Finder could not enrich DOCX result locations in the background.")
 					wx.CallAfter(self.clear_word_pending, generation, list(indices))
 					continue
 				updates = {}
@@ -613,9 +675,9 @@ class FolderTextFinderDialog(wx.Dialog):
 				try:
 					word.Quit()
 				except Exception:
-					log_exception("Folder Text Finder could not close the hidden Word application.")
+					log_exception("Text Finder could not close the hidden Word application.")
 			uninitialize_com()
-		log_info("Folder Text Finder Word location lookup finished. updated=%d of docx=%d", updated_total, docx_count)
+		log_info("Text Finder Word location lookup finished. updated=%d of docx=%d", updated_total, docx_count)
 		wx.CallAfter(self.announce_word_enrichment_done, generation, updated_total, docx_count)
 
 	def apply_word_locations(self, generation, updates, cleared):
@@ -670,14 +732,14 @@ class FolderTextFinderDialog(wx.Dialog):
 		result = self.get_selected_result()
 		if result is None:
 			return
-		log_info("Folder Text Finder opening result text for a %s file.", result.path.suffix.lower() or "no-extension")
+		log_info("Text Finder opening result text for a %s file.", result.path.suffix.lower() or "no-extension")
 		try:
 			extracted = extract_text(result.path)
 		except TextExtractionError as exc:
 			ui.message(_("Could not open result text: {reason}").format(reason=exc.message))
 			return
 		except Exception:
-			log_exception("Folder Text Finder could not open result text.")
+			log_exception("Text Finder could not open result text.")
 			ui.message(_("Could not open result text."))
 			return
 		ResultLocationDialog(self, result, extracted.text).Show()
@@ -786,12 +848,12 @@ def get_docx_visual_locations(path, results, extracted_text, visible=True, close
 			try:
 				document.Close(False)
 			except Exception:
-				log_exception("Folder Text Finder could not close the hidden Word document.")
+				log_exception("Text Finder could not close the hidden Word document.")
 		if quit_word and word is not None:
 			try:
 				word.Quit()
 			except Exception:
-				log_exception("Folder Text Finder could not close the hidden Word application.")
+				log_exception("Text Finder could not close the hidden Word application.")
 		uninitialize_com()
 
 
@@ -834,13 +896,13 @@ def collect_docx_visual_locations(word, results, extracted_text):
 	return locations
 
 def open_result_file(result, extracted_text=None):
-	log_info("Folder Text Finder opening original file with a %s extension.", result.path.suffix.lower() or "no-extension")
+	log_info("Text Finder opening original file with a %s extension.", result.path.suffix.lower() or "no-extension")
 	if result.path.suffix.lower() == ".docx":
 		if extracted_text is None:
 			try:
 				extracted_text = extract_text(result.path).text
 			except Exception:
-				log_exception("Folder Text Finder could not extract DOCX text before opening in Word.")
+				log_exception("Text Finder could not extract DOCX text before opening in Word.")
 				open_file_or_select(result.path)
 				return result
 		updated_result = open_docx_result_in_word(result, extracted_text)
@@ -862,7 +924,7 @@ def open_docx_result_in_word(result, extracted_text):
 		ui.message(_("Opened in Word, but Word did not report a page or visual line."))
 		return result
 	except Exception:
-		log_exception("Folder Text Finder could not open DOCX result in Word.")
+		log_exception("Text Finder could not open DOCX result in Word.")
 		return None
 
 

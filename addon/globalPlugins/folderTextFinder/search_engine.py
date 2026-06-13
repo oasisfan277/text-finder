@@ -74,7 +74,7 @@ class SearchStatistics:
 
 	def to_report(self) -> str:
 		lines = [
-			"Folder Text Finder Statistics",
+			"Text Finder Statistics",
 			"",
 			f"Search folder: {self.folder}",
 			f"Include subfolders: {'yes' if self.options.include_subfolders else 'no'}",

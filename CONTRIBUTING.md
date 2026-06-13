@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for helping improve Folder Text Finder.
+Thank you for helping improve Text Finder.
 
 ## Project Principles
 

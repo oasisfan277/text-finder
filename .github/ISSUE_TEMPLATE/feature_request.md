@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an improvement for Folder Text Finder
+about: Suggest an improvement for Text Finder
 title: ""
 labels: enhancement
 assignees: ""

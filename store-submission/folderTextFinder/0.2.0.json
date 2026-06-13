@@ -1,0 +1,30 @@
+{
+	"addonId": "folderTextFinder",
+	"addonVersionNumber": {
+		"major": 0,
+		"minor": 2,
+		"patch": 0
+	},
+	"addonVersionName": "0.2.0",
+	"displayName": "Folder Text Finder",
+	"publisher": "Tara",
+	"description": "Search files containing text in the current File Explorer folder.",
+	"homepage": "https://github.com/oasisfan277/folder-text-finder",
+	"minNVDAVersion": {
+		"major": 2024,
+		"minor": 1,
+		"patch": 0
+	},
+	"lastTestedVersion": {
+		"major": 2026,
+		"minor": 1,
+		"patch": 0
+	},
+	"channel": "stable",
+	"URL": "https://github.com/oasisfan277/folder-text-finder/releases/download/v0.2.0/folderTextFinder-0.2.0.nvda-addon",
+	"sha256": "2B7C150232F72EF305E6F7740876D1EA8E929DE0DB16C557EBC2044BD480C725",
+	"sourceURL": "https://github.com/oasisfan277/folder-text-finder",
+	"license": "GPL v2",
+	"licenseURL": "https://www.gnu.org/licenses/old-licenses/gpl-2.0.html",
+	"translations": []
+}
