@@ -1,5 +1,7 @@
 import os
 import subprocess
+import json
+import tempfile
 import threading
 import traceback
 from dataclasses import replace
@@ -865,18 +867,21 @@ class TextFinderDialog(wx.Dialog):
 			for path, indices in indices_by_path.items():
 				try:
 					extracted_text = extract_text(path).text
-					if word is None:
-						word = get_word_application(new_instance=True)
-						word.Visible = False
-					document = open_word_document_read_only(word, path)
-					try:
-						document.Activate()
-						locations = collect_docx_visual_locations(word, [original_results[index] for index in indices], extracted_text)
-					finally:
+					path_results = [original_results[index] for index in indices]
+					locations = get_open_word_visual_locations(path, path_results, extracted_text)
+					if locations is None:
+						if word is None:
+							word = get_word_application(new_instance=True)
+							word.Visible = False
+						document = open_word_document_read_only(word, path)
 						try:
-							document.Close(False)
-						except Exception:
-							log_exception("Text Finder could not close the hidden Word document.")
+							document.Activate()
+							locations = collect_docx_visual_locations(word, path_results, extracted_text)
+						finally:
+							try:
+								document.Close(False)
+							except Exception:
+								log_exception("Text Finder could not close the hidden Word document.")
 				except Exception:
 					log_exception("Text Finder could not enrich DOCX result locations in the background.")
 					wx.CallAfter(self.clear_word_pending, generation, list(indices))
@@ -1080,6 +1085,122 @@ def open_word_document_read_only(word, path):
 	# ReadOnly lets Word report page and visual line information even when the
 	# user already has the document open for editing.
 	return word.Documents.Open(str(path), False, True, False)
+
+
+def get_open_word_visual_locations(path, results, extracted_text):
+	requests = []
+	for index, result in enumerate(results):
+		matched_text = extracted_text[result.start:result.end]
+		if not matched_text:
+			continue
+		requests.append({
+			"index": index,
+			"text": matched_text,
+			"occurrence": extracted_text[:result.start].count(matched_text) + 1,
+		})
+	if not requests:
+		return {}
+	payload = {
+		"fileName": Path(path).name,
+		"requests": requests,
+	}
+	payload_path = None
+	script_path = None
+	try:
+		with tempfile.NamedTemporaryFile("w", delete=False, suffix=".json", encoding="utf-8") as payload_file:
+			json.dump(payload, payload_file)
+			payload_path = payload_file.name
+		with tempfile.NamedTemporaryFile("w", delete=False, suffix=".ps1", encoding="utf-8") as script_file:
+			script_file.write(OPEN_WORD_LOCATION_SCRIPT)
+			script_path = script_file.name
+		for executable in powershell_executables():
+			try:
+				completed = subprocess.run(
+					[executable, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script_path, payload_path],
+					capture_output=True,
+					text=True,
+					encoding="utf-8",
+					errors="replace",
+					timeout=60,
+					creationflags=get_hidden_process_flags(),
+				)
+			except FileNotFoundError:
+				continue
+			if completed.returncode != 0:
+				log_info("Text Finder open Word location lookup failed: %s", completed.stderr.strip() or completed.stdout.strip())
+				return None
+			data = json.loads(completed.stdout or "{}")
+			return {int(index): tuple(location) for index, location in data.items()}
+	except Exception:
+		log_exception("Text Finder could not get visual locations from the already-open Word document.")
+		return None
+	finally:
+		for temp_path in (payload_path, script_path):
+			if temp_path:
+				try:
+					os.unlink(temp_path)
+				except OSError:
+					pass
+
+
+def powershell_executables():
+	windows_dir = os.environ.get("SystemRoot") or os.environ.get("windir") or r"C:\Windows"
+	return (
+		str(Path(windows_dir) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"),
+		str(Path(windows_dir) / "Sysnative" / "WindowsPowerShell" / "v1.0" / "powershell.exe"),
+		"powershell.exe",
+	)
+
+
+def get_hidden_process_flags():
+	return getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+OPEN_WORD_LOCATION_SCRIPT = r'''
+param([string] $PayloadPath)
+$ErrorActionPreference = 'Stop'
+$payload = Get-Content -LiteralPath $PayloadPath -Raw | ConvertFrom-Json
+$word = [Runtime.InteropServices.Marshal]::GetActiveObject('Word.Application')
+$document = $null
+for ($index = 1; $index -le $word.Documents.Count; $index++) {
+	$candidate = $word.Documents.Item($index)
+	if ($candidate.Name -eq $payload.fileName) {
+		$document = $candidate
+		break
+	}
+}
+if ($null -eq $document) {
+	throw "The open Word document was not found."
+}
+$document.Activate()
+$selection = $word.Selection
+$find = $selection.Find
+$find.ClearFormatting()
+$find.Forward = $true
+$find.Wrap = 0
+$find.MatchCase = $true
+$locations = @{}
+foreach ($request in $payload.requests) {
+	$selection.HomeKey(6) | Out-Null
+	$find.Text = [string] $request.text
+	$foundCount = 0
+	while ($foundCount -lt [int] $request.occurrence) {
+		if (-not $find.Execute()) {
+			break
+		}
+		$foundCount += 1
+		if ($foundCount -lt [int] $request.occurrence) {
+			$selection.Collapse(0)
+		}
+	}
+	if ($foundCount -eq [int] $request.occurrence) {
+		$locations[[string] $request.index] = @($selection.Information(3), $selection.Information(10))
+		$selection.Collapse(0)
+	}
+}
+$locations | ConvertTo-Json -Compress
+'''
+
 
 def collect_docx_visual_locations(word, results, extracted_text):
 	# Walk the document forward once, mapping each result to the page and visual

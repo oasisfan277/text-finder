@@ -18,7 +18,9 @@ from addon.globalPlugins.textFinder import (
 	file_type_is_selected,
 	format_result_for_list,
 	get_active_file_patterns,
+	get_open_word_visual_locations,
 	get_word_active_document_path,
+	OPEN_WORD_LOCATION_SCRIPT,
 	word_file_name_from_object_name,
 	open_word_document_read_only,
 	normalize_search_folder,
@@ -73,6 +75,13 @@ def test_open_word_document_read_only_uses_read_only_flags():
 	word = FakeWord()
 	assert open_word_document_read_only(word, Path("book.docx")) == "document"
 	assert word.Documents.calls == [("book.docx", False, True, False)]
+
+
+def test_open_word_location_script_uses_running_word_document():
+	assert "GetActiveObject('Word.Application')" in OPEN_WORD_LOCATION_SCRIPT
+	assert "$word.Documents.Count" in OPEN_WORD_LOCATION_SCRIPT
+
+
 def test_word_file_name_from_word_window_title():
 	assert word_file_name_from_object_name("Grimm fairytales for bookclub.docx - Word") == "Grimm fairytales for bookclub.docx"
 

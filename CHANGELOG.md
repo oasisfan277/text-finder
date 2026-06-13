@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.11
+
+- Used the already-open Word document for page and visual line lookup before falling back to opening a separate read-only document.
+
 ## 0.3.10
 
 - Opened Word documents read-only for page and visual line lookup, so results from an already-open document can still get Word page and visual line numbers.
