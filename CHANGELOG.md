@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.8
+
+- Updated the locked Word document fallback to call PowerShell by its full Windows path when NVDA cannot find it from the environment.
+
 ## 0.3.7
 
 - Added a fallback for Word documents that Windows reports as permission denied while they are open in Word.

@@ -193,22 +193,37 @@ def extract_docx_from_locked_file(path: Path) -> ExtractedText:
 
 def extract_docx_with_powershell(path: Path) -> ExtractedText:
 	command = DOCX_POWERSHELL_READER.format(path=str(path).replace("'", "''"))
-	try:
-		completed = subprocess.run(
-			["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
-			capture_output=True,
-			text=True,
-			encoding="utf-8",
-			errors="replace",
-			timeout=30,
-			creationflags=get_hidden_process_flags(),
-		)
-	except Exception as exc:
-		raise TextExtractionError("unreadable", f"DOCX file could not be read while open in Word: {exc}") from exc
-	if completed.returncode != 0:
-		reason = completed.stderr.strip() or completed.stdout.strip() or "PowerShell could not read the DOCX file."
-		raise TextExtractionError("unreadable", reason)
-	return extract_docx_from_document_xml(completed.stdout)
+	last_error = None
+	for executable in powershell_executables():
+		try:
+			completed = subprocess.run(
+				[executable, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+				capture_output=True,
+				text=True,
+				encoding="utf-8",
+				errors="replace",
+				timeout=30,
+				creationflags=get_hidden_process_flags(),
+			)
+		except FileNotFoundError as exc:
+			last_error = exc
+			continue
+		except Exception as exc:
+			raise TextExtractionError("unreadable", f"DOCX file could not be read while open in Word: {exc}") from exc
+		if completed.returncode != 0:
+			reason = completed.stderr.strip() or completed.stdout.strip() or "PowerShell could not read the DOCX file."
+			raise TextExtractionError("unreadable", reason)
+		return extract_docx_from_document_xml(completed.stdout)
+	raise TextExtractionError("unreadable", f"DOCX file could not be read while open in Word: {last_error}")
+
+
+def powershell_executables() -> tuple[str, ...]:
+	windows_dir = os.environ.get("SystemRoot") or os.environ.get("windir") or r"C:\Windows"
+	return (
+		str(Path(windows_dir) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"),
+		str(Path(windows_dir) / "Sysnative" / "WindowsPowerShell" / "v1.0" / "powershell.exe"),
+		"powershell.exe",
+	)
 
 
 def get_hidden_process_flags() -> int:

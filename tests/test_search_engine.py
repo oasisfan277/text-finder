@@ -31,6 +31,7 @@ from addon.globalPlugins.textFinder.text_extractors import (
 	all_supported_extensions,
 	extract_docx,
 	extract_text,
+	powershell_executables,
 )
 
 
@@ -170,6 +171,12 @@ def test_normalize_search_folder_uses_parent_for_file():
 
 
 
+
+
+def test_powershell_executables_prefers_full_windows_path():
+	executables = powershell_executables()
+	assert executables[0].lower().endswith("windowspowershell\\v1.0\\powershell.exe")
+	assert executables[-1] == "powershell.exe"
 def test_docx_permission_error_uses_locked_file_fallback():
 	original_zip = text_extractors_module.extract_docx_from_zip
 	original_locked = text_extractors_module.extract_docx_from_locked_file
