@@ -232,15 +232,25 @@ def get_hidden_process_flags() -> int:
 
 DOCX_POWERSHELL_READER = r'''
 $ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-$zip = [System.IO.Compression.ZipFile]::OpenRead('{path}')
+Add-Type -AssemblyName System.IO.Compression
+$fileStream = [System.IO.File]::Open(
+	'{path}',
+	[System.IO.FileMode]::Open,
+	[System.IO.FileAccess]::Read,
+	[System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete
+)
 try {{
-	$entry = $zip.GetEntry('word/document.xml')
-	if ($null -eq $entry) {{ throw 'DOCX document text was not found.' }}
-	$reader = New-Object System.IO.StreamReader($entry.Open(), [System.Text.Encoding]::UTF8)
-	try {{ $reader.ReadToEnd() }} finally {{ $reader.Dispose() }}
+	$zip = New-Object System.IO.Compression.ZipArchive($fileStream, [System.IO.Compression.ZipArchiveMode]::Read, $true)
+	try {{
+		$entry = $zip.GetEntry('word/document.xml')
+		if ($null -eq $entry) {{ throw 'DOCX document text was not found.' }}
+		$reader = New-Object System.IO.StreamReader($entry.Open(), [System.Text.Encoding]::UTF8)
+		try {{ $reader.ReadToEnd() }} finally {{ $reader.Dispose() }}
+	}} finally {{
+		$zip.Dispose()
+	}}
 }} finally {{
-	$zip.Dispose()
+	$fileStream.Dispose()
 }}
 '''
 

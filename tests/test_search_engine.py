@@ -32,6 +32,7 @@ from addon.globalPlugins.textFinder.text_extractors import (
 	extract_docx,
 	extract_text,
 	powershell_executables,
+	DOCX_POWERSHELL_READER,
 )
 
 
@@ -173,6 +174,12 @@ def test_normalize_search_folder_uses_parent_for_file():
 
 
 
+
+
+def test_docx_powershell_reader_uses_shared_file_access():
+	assert "FileShare" in DOCX_POWERSHELL_READER
+	assert "ReadWrite" in DOCX_POWERSHELL_READER
+	assert "Delete" in DOCX_POWERSHELL_READER
 def test_powershell_executables_prefers_full_windows_path():
 	executables = powershell_executables()
 	assert executables[0].lower().endswith("windowspowershell\\v1.0\\powershell.exe")

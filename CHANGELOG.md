@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.9
+
+- Updated the locked Word document fallback to open DOCX files with shared read access, so files already open in Word can still be searched.
+
 ## 0.3.8
 
 - Updated the locked Word document fallback to call PowerShell by its full Windows path when NVDA cannot find it from the environment.
