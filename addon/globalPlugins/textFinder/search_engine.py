@@ -104,8 +104,8 @@ class SearchStatistics:
 
 class Searcher:
 	def __init__(self, target: Path, options: SearchOptions):
-		self.target = target
-		self.folder = target
+		self.target = Path(target)
+		self.folder = self.target
 		self.options = options
 
 	def search(self) -> tuple[list[SearchResult], SearchStatistics]:

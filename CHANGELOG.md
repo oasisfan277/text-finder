@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.6
+
+- Normalized single-file search targets before searching and added clearer diagnostics for searches that return no results.
+
+## 0.3.5
+
+- Improved open Word document detection when NVDA cannot use direct Word automation by matching the active Word document name to the selected or visible file in File Explorer.
 ## 0.3.4
 
 - Improved open Microsoft Word document detection by attaching to the running Word instance instead of relying only on NVDA's foreground app name.

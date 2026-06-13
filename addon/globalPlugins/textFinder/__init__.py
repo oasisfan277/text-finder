@@ -646,6 +646,16 @@ def log_shell_window_diagnostics(log):
 	except Exception:
 		log.info("Text Finder shell diagnostics failed:\n%s", traceback.format_exc())
 
+def log_search_issue_details(statistics):
+	for label, entries in (
+		("unsupported", statistics.unsupported_files),
+		("no extractable text", statistics.no_extractable_text_files),
+		("unreadable", statistics.unreadable_files),
+	):
+		for path, reason in entries[:5]:
+			log_info("Text Finder search %s file: %s; reason: %s", label, path, reason)
+
+
 class TextFinderDialog(wx.Dialog):
 	def __init__(self, parent, target):
 		super().__init__(parent, title=_("Text Finder"))
@@ -793,7 +803,7 @@ class TextFinderDialog(wx.Dialog):
 			ui.message(_("{count} spaces").format(count=run))
 
 	def _run_search(self, options):
-		searcher = Searcher(Path(self.target), options)
+		searcher = Searcher(self.target, options)
 		results, statistics = searcher.search()
 		wx.CallAfter(self._finish_search, results, statistics)
 
@@ -805,12 +815,21 @@ class TextFinderDialog(wx.Dialog):
 		self.searchButton.Enable()
 		has_docx = self._has_docx_results(results)
 		log_info(
-			"Text Finder search complete. results=%d files_with_matches=%d duration=%.2f has_docx=%s",
+			"Text Finder search complete. target=%s exists=%s is_file=%s suffix=%s results=%d files_with_matches=%d supported=%d unsupported=%d no_text=%d unreadable=%d duration=%.2f has_docx=%s",
+			statistics.folder,
+			statistics.folder.exists(),
+			statistics.folder.is_file(),
+			statistics.folder.suffix,
 			len(results),
 			len(statistics.files_with_matches),
+			statistics.supported_files_searched,
+			len(statistics.unsupported_files),
+			len(statistics.no_extractable_text_files),
+			len(statistics.unreadable_files),
 			statistics.duration,
 			has_docx,
 		)
+		log_search_issue_details(statistics)
 		# Reveal the results straight away so they are usable, then fill the Word
 		# page and visual line numbers in the background, updating each result in
 		# place as Word reports it.

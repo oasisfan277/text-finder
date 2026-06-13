@@ -164,6 +164,15 @@ def test_normalize_search_folder_uses_parent_for_file():
 
 
 
+
+
+def test_searcher_accepts_string_file_target():
+	with tempfile.TemporaryDirectory() as temp_dir:
+		path = Path(temp_dir) / "chapter.txt"
+		path.write_text("cat", encoding="utf-8")
+		results, statistics = Searcher(str(path), SearchOptions(query="cat", file_patterns=("*.docx",))).search()
+		assert len(results) == 1
+		assert statistics.supported_files_searched == 1
 def test_searcher_searches_single_file_even_when_filter_excludes_it():
 	with tempfile.TemporaryDirectory() as temp_dir:
 		path = Path(temp_dir) / "chapter.txt"
