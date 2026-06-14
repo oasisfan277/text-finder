@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.16
+
+- Explicitly hid folder and open-result controls in the search dialog when searching inside a single file.
+
 ## 0.3.15
 
 - Improved Notepad single-file detection, simplified single-file search buttons further, and made Go to Search Result wait for Notepad before jumping to the line.

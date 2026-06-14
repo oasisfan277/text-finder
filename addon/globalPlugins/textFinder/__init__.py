@@ -790,6 +790,7 @@ class TextFinderDialog(wx.Dialog):
 		log_info("Text Finder dialog presented for target: %s", self.folder)
 
 	def _build(self):
+		file_search = self.is_file_search()
 		mainSizer = wx.BoxSizer(wx.VERTICAL)
 		mainSizer.Add(wx.StaticText(self, label=_("Search target: {target}").format(target=self.target)), 0, wx.ALL, 8)
 
@@ -817,7 +818,9 @@ class TextFinderDialog(wx.Dialog):
 
 		mainSizer.Add(searchModeSizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		mainSizer.Add(self.caseCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
-		if not self.is_file_search():
+		if file_search:
+			self.subfoldersCtrl.Hide()
+		else:
 			mainSizer.Add(self.subfoldersCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		mainSizer.Add(self.reportPagesCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		# File types to search are chosen in the NVDA settings panel, not here.
@@ -835,7 +838,11 @@ class TextFinderDialog(wx.Dialog):
 		self.closeButton = wx.Button(self, wx.ID_CLOSE)
 		buttons = [self.searchButton]
 		buttons.append(self.goToResultButton)
-		if not self.is_file_search():
+		if file_search:
+			self.openFileButton.Hide()
+			self.openButton.Hide()
+			self.statsButton.Hide()
+		else:
 			buttons.extend([self.openFileButton, self.openButton])
 			buttons.append(self.statsButton)
 		buttons.append(self.closeButton)
