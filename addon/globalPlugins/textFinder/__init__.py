@@ -447,6 +447,10 @@ def normalize_search_folder(candidate):
 
 def get_open_document_target():
 	app_name = get_foreground_app_name()
+	if app_name == "notepad":
+		target = get_notepad_active_document_target()
+		if target:
+			return target
 	if app_name in {"winword", "word"}:
 		target = get_open_word_document_target_from_nvda()
 		if target:
@@ -486,13 +490,93 @@ def get_foreground_app_name():
 
 
 def get_open_word_document_target_from_nvda():
-	document_name = get_foreground_document_file_name({"winword", "word"})
+	document_name = get_foreground_document_file_name({"winword", "word"}, (".docx", ".docm", ".doc", ".rtf"))
 	if not document_name:
 		return None
 	return find_matching_file_in_shell_windows(document_name)
 
 
-def get_foreground_document_file_name(app_names):
+def get_notepad_active_document_target():
+	process_id = get_foreground_process_id()
+	if process_id:
+		target = notepad_document_from_command_line(get_process_command_line(process_id))
+		if target:
+			return target
+	document_name = get_foreground_document_file_name({"notepad"}, tuple(PLAIN_TEXT_EXTENSIONS | {".html", ".htm", ".rtf"}))
+	if document_name:
+		return find_matching_file_in_shell_windows(document_name)
+	return None
+
+
+def get_foreground_process_id():
+	try:
+		import ctypes
+
+		hwnd = ctypes.windll.user32.GetForegroundWindow()
+		process_id = ctypes.c_ulong()
+		ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
+		return process_id.value
+	except Exception:
+		return None
+
+
+def get_process_command_line(process_id):
+	if not process_id:
+		return ""
+	try:
+		completed = subprocess.run(
+			[
+				powershell_executables()[0],
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"(Get-CimInstance Win32_Process -Filter \"ProcessId = {process_id}\").CommandLine".format(process_id=int(process_id)),
+			],
+			capture_output=True,
+			text=True,
+			timeout=3,
+			creationflags=get_hidden_process_flags(),
+		)
+		if completed.returncode == 0:
+			return completed.stdout.strip()
+	except Exception:
+		log_exception("Text Finder could not read the foreground process command line.")
+	return ""
+
+
+def notepad_document_from_command_line(command_line):
+	for argument in split_windows_command_line(command_line)[1:]:
+		if argument.startswith(("/", "-")):
+			continue
+		target = normalize_search_target(argument)
+		if target and can_open_in_notepad(Path(target)):
+			return target
+	return None
+
+
+def split_windows_command_line(command_line):
+	if not command_line:
+		return []
+	try:
+		import ctypes
+
+		argc = ctypes.c_int()
+		command_line_to_argv = ctypes.windll.shell32.CommandLineToArgvW
+		command_line_to_argv.argtypes = [ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_int)]
+		command_line_to_argv.restype = ctypes.POINTER(ctypes.c_wchar_p)
+		argv = command_line_to_argv(command_line, ctypes.byref(argc))
+		if not argv:
+			return []
+		try:
+			return [argv[index] for index in range(argc.value)]
+		finally:
+			ctypes.windll.kernel32.LocalFree(argv)
+	except Exception:
+		return [part.strip('"') for part in command_line.split()]
+
+
+def get_foreground_document_file_name(app_names, suffixes):
 	try:
 		import api
 
@@ -504,7 +588,7 @@ def get_foreground_document_file_name(app_names):
 				app_module = getattr(current, "appModule", None)
 				app_name = str(getattr(app_module, "appName", "") or "").lower()
 				if app_name in app_names:
-					name = word_file_name_from_object_name(getattr(current, "name", None))
+					name = document_file_name_from_object_name(getattr(current, "name", None), suffixes)
 					if name:
 						return name
 				current = getattr(current, "parent", None)
@@ -514,12 +598,20 @@ def get_foreground_document_file_name(app_names):
 
 
 def word_file_name_from_object_name(name):
+	return document_file_name_from_object_name(name, (".docx", ".docm", ".doc", ".rtf"))
+
+
+def document_file_name_from_object_name(name, suffixes):
 	if not name:
 		return None
 	name = str(name).strip()
 	if name.endswith(" - Word"):
 		name = name[:-7].strip()
-	for suffix in (".docx", ".docm", ".doc", ".rtf"):
+	if name.endswith(" - Notepad"):
+		name = name[:-10].strip()
+	if name.startswith("*"):
+		name = name[1:].strip()
+	for suffix in suffixes:
 		index = name.lower().find(suffix)
 		if index >= 0:
 			return name[: index + len(suffix)]
@@ -745,7 +837,8 @@ class TextFinderDialog(wx.Dialog):
 		buttons.append(self.goToResultButton)
 		if not self.is_file_search():
 			buttons.extend([self.openFileButton, self.openButton])
-		buttons.extend([self.statsButton, self.closeButton])
+			buttons.append(self.statsButton)
+		buttons.append(self.closeButton)
 		for button in buttons:
 			buttonSizer.Add(button, 0, wx.ALL, 4)
 		mainSizer.Add(buttonSizer, 0, wx.ALIGN_RIGHT | wx.ALL, 4)
@@ -1375,8 +1468,7 @@ def can_open_in_notepad(path):
 
 def go_to_text_editor_result(result):
 	try:
-		process = subprocess.Popen(["notepad.exe", str(result.path)])
-		threading.Thread(target=send_notepad_go_to_line, args=(process.pid, result.line), daemon=True).start()
+		threading.Thread(target=send_notepad_go_to_line, args=(result.path, result.line), daemon=True).start()
 		ui.message(_("Opened in Notepad at line {line}.").format(line=result.line))
 		return result
 	except Exception:
@@ -1385,8 +1477,9 @@ def go_to_text_editor_result(result):
 		return None
 
 
-def send_notepad_go_to_line(process_id, line):
+def send_notepad_go_to_line(path, line):
 	try:
+		script = NOTEPAD_GO_TO_LINE_SCRIPT.replace("__PATH_JSON__", json.dumps(str(path))).replace("__LINE__", str(int(line)))
 		subprocess.run(
 			[
 				powershell_executables()[0],
@@ -1394,7 +1487,7 @@ def send_notepad_go_to_line(process_id, line):
 				"-ExecutionPolicy",
 				"Bypass",
 				"-Command",
-				NOTEPAD_GO_TO_LINE_SCRIPT.format(process_id=int(process_id), line=int(line)),
+				script,
 			],
 			capture_output=True,
 			text=True,
@@ -1406,15 +1499,45 @@ def send_notepad_go_to_line(process_id, line):
 
 
 NOTEPAD_GO_TO_LINE_SCRIPT = r'''
-Start-Sleep -Milliseconds 700
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName Microsoft.VisualBasic
-[Microsoft.VisualBasic.Interaction]::AppActivate({process_id}) | Out-Null
-Start-Sleep -Milliseconds 150
+$path = @'
+__PATH_JSON__
+'@ | ConvertFrom-Json
+$line = __LINE__
+$process = Start-Process -FilePath "notepad.exe" -ArgumentList @($path) -PassThru
+$fileName = Split-Path -Path $path -Leaf
+$deadline = (Get-Date).AddSeconds(5)
+$activated = $false
+do {
+	Start-Sleep -Milliseconds 200
+	try {
+		$process.Refresh()
+		if ($process.MainWindowHandle -ne 0) {
+			[Microsoft.VisualBasic.Interaction]::AppActivate($process.Id) | Out-Null
+			$activated = $true
+			break
+		}
+	} catch {
+	}
+	$candidate = Get-Process -Name notepad -ErrorAction SilentlyContinue |
+		Where-Object { $_.MainWindowTitle -like "*$fileName*" } |
+		Sort-Object StartTime -Descending |
+		Select-Object -First 1
+	if ($candidate) {
+		[Microsoft.VisualBasic.Interaction]::AppActivate($candidate.Id) | Out-Null
+		$activated = $true
+		break
+	}
+} until ((Get-Date) -gt $deadline)
+if (-not $activated) {
+	return
+}
+Start-Sleep -Milliseconds 250
 [System.Windows.Forms.SendKeys]::SendWait("^g")
-Start-Sleep -Milliseconds 150
-[System.Windows.Forms.SendKeys]::SendWait("{line}")
-[System.Windows.Forms.SendKeys]::SendWait("{{ENTER}}")
+Start-Sleep -Milliseconds 250
+[System.Windows.Forms.SendKeys]::SendWait([string]$line)
+[System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
 '''
 
 

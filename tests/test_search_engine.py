@@ -28,6 +28,7 @@ from addon.globalPlugins.textFinder import (
 	ordered_supported_file_types,
 	normalize_search_folder,
 	normalize_search_target,
+	notepad_document_from_command_line,
 	parse_extension_list,
 	path_from_shell_location_url,
 	pdf_page_uri,
@@ -100,6 +101,24 @@ def test_word_file_name_from_word_window_title():
 
 def test_word_file_name_from_document_pane_name():
 	assert word_file_name_from_object_name("Grimm fairytales for bookclub.docx") == "Grimm fairytales for bookclub.docx"
+
+
+def test_notepad_document_from_command_line_finds_open_text_file():
+	with tempfile.TemporaryDirectory() as temp_dir:
+		path = Path(temp_dir) / "notes.txt"
+		path.write_text("cat", encoding="utf-8")
+		command_line = '"C:\\Windows\\System32\\notepad.exe" "{path}"'.format(path=path)
+		assert notepad_document_from_command_line(command_line) == str(path)
+
+
+def test_notepad_document_from_command_line_rejects_binary_file():
+	with tempfile.TemporaryDirectory() as temp_dir:
+		path = Path(temp_dir) / "song.mp3"
+		path.write_bytes(b"not text")
+		command_line = '"C:\\Windows\\System32\\notepad.exe" "{path}"'.format(path=path)
+		assert notepad_document_from_command_line(command_line) is None
+
+
 def test_word_active_document_path_uses_active_document():
 	with tempfile.TemporaryDirectory() as temp_dir:
 		path = Path(temp_dir) / "book.docx"

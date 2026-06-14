@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.15
+
+- Improved Notepad single-file detection, simplified single-file search buttons further, and made Go to Search Result wait for Notepad before jumping to the line.
+
 ## 0.3.14
 
 - Added Go to Search Result support for Notepad-friendly files and PDFs, and simplified the search dialog during single-file searches.
