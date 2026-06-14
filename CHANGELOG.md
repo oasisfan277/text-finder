@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.24
+
+- Fixed a PDF search crash caused by Unicode offset changes and cancelled running searches when Text Finder is closed.
+
 ## 0.3.23
 
 - Made the active file-type filter visible in the search dialog and reset the close button to a standard Escape-friendly dialog button.

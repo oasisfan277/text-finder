@@ -1001,6 +1001,8 @@ class TextFinderDialog(wx.Dialog):
 		self.statistics = None
 		self._lastQueryValue = ""
 		self._search_generation = 0
+		self._closed = False
+		self._cancel_search = threading.Event()
 		self._build()
 		self.CentreOnScreen()
 
@@ -1088,6 +1090,7 @@ class TextFinderDialog(wx.Dialog):
 		self.closeButton.Bind(wx.EVT_BUTTON, self.on_close)
 		self.Bind(wx.EVT_CHAR_HOOK, self.on_dialog_char_hook)
 		self.Bind(wx.EVT_MENU, self.on_close, id=wx.ID_CANCEL)
+		self.Bind(wx.EVT_CLOSE, self.on_close)
 		self.SetEscapeId(wx.ID_CANCEL)
 		self.SetAcceleratorTable(wx.AcceleratorTable([(wx.ACCEL_NORMAL, wx.WXK_ESCAPE, wx.ID_CANCEL)]))
 		self.queryCtrl.Bind(wx.EVT_CHAR_HOOK, self.on_query_char_hook)
@@ -1102,6 +1105,7 @@ class TextFinderDialog(wx.Dialog):
 			return
 		self.searchButton.Disable()
 		self.resultsCtrl.Clear()
+		self._cancel_search.clear()
 		ui.message(_("Searching {file_types}.").format(file_types=active_file_types_summary()))
 		options = SearchOptions(
 			query=query,
@@ -1125,6 +1129,10 @@ class TextFinderDialog(wx.Dialog):
 		thread.start()
 
 	def on_close(self, evt):
+		if self._closed:
+			return
+		self._closed = True
+		self._cancel_search.set()
 		self.Destroy()
 
 	def _save_search_options(self, options):
@@ -1176,10 +1184,13 @@ class TextFinderDialog(wx.Dialog):
 
 	def _run_search(self, options):
 		searcher = Searcher(self.target, options)
-		results, statistics = searcher.search()
-		wx.CallAfter(self._finish_search, results, statistics)
+		results, statistics = searcher.search(self._cancel_search.is_set)
+		if not self._cancel_search.is_set() and not self._closed:
+			wx.CallAfter(self._finish_search, results, statistics)
 
 	def _finish_search(self, results, statistics):
+		if self._closed:
+			return
 		self.results = results
 		self.statistics = statistics
 		self._search_generation += 1

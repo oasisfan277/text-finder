@@ -136,11 +136,13 @@ class Searcher:
 		self.folder = self.target
 		self.options = options
 
-	def search(self) -> tuple[list[SearchResult], SearchStatistics]:
+	def search(self, should_cancel=None) -> tuple[list[SearchResult], SearchStatistics]:
 		started = time.monotonic()
 		statistics = SearchStatistics(self.folder, self.options)
 		results: list[SearchResult] = []
 		for path in self._iter_candidate_files():
+			if should_cancel and should_cancel():
+				break
 			if not self.target.is_file() and not self._matches_patterns(path):
 				statistics.unsupported_files.append((path, "File does not match the selected file filters."))
 				continue
@@ -160,6 +162,8 @@ class Searcher:
 			except OSError as exc:
 				statistics.unreadable_files.append((path, str(exc)))
 				continue
+			if should_cancel and should_cancel():
+				break
 			statistics.supported_files_searched += 1
 			file_results = list(find_matches(path, extracted, self.options))
 			results.extend(file_results)
@@ -185,8 +189,8 @@ def find_matches(path: Path, extracted: ExtractedText, options: SearchOptions):
 	text = extracted.text
 	query = options.query
 	if not options.case_sensitive:
-		search_text = text.casefold()
-		search_query = query.casefold()
+		search_text = position_preserving_lower(text)
+		search_query = position_preserving_lower(query)
 	else:
 		search_text = text
 		search_query = query
@@ -198,6 +202,9 @@ def find_matches(path: Path, extracted: ExtractedText, options: SearchOptions):
 
 	word_pending = path.suffix.lower() == ".docx"
 	for start, end in spans:
+		if start < 0 or start >= len(text):
+			continue
+		end = min(end, len(text))
 		line, column = line_column_for_offset(text, start)
 		page = extracted.page_for_offset(start) if options.report_page_numbers else None
 		yield SearchResult(path=path, line=line, column=column, preview=preview_for_span(text, start, end), page=page, location_unit=location_unit_for_path(path), start=start, end=end, word_pending=word_pending)
@@ -207,6 +214,14 @@ def location_unit_for_path(path: Path) -> str:
 	if path.suffix.lower() in {".docx", ".odt"}:
 		return "Open Result"
 	return "Line"
+
+
+def position_preserving_lower(text: str) -> str:
+	parts = []
+	for character in text:
+		lowered = character.lower()
+		parts.append(lowered if len(lowered) == 1 else character)
+	return "".join(parts)
 
 
 def exact_whole_word_spans(text: str, query: str):
@@ -310,6 +325,9 @@ def sentence_excerpt_for_span(text: str, start: int, end: int) -> str | None:
 
 
 def sentence_bounds_for_offset(text: str, offset: int) -> tuple[int | None, int | None]:
+	if not text:
+		return None, None
+	offset = max(0, min(offset, len(text) - 1))
 	boundary = offset - 1
 	while boundary >= 0 and text[boundary] not in ".!?\r\n":
 		boundary -= 1

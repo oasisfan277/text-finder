@@ -12,6 +12,7 @@ from addon.globalPlugins.textFinder.search_engine import (
 	find_matches,
 	line_column_for_offset,
 	literal_spans,
+	position_preserving_lower,
 	preview_for_span,
 )
 from addon.globalPlugins.textFinder import (
@@ -224,6 +225,20 @@ def test_case_insensitive_search_matches_uppercase_text():
 	text = "MIXED mixed"
 	results = list(find_matches(Path("example.txt"), ExtractedText(text), SearchOptions(query="mixed")))
 	assert len(results) == 2
+
+
+def test_case_insensitive_search_keeps_document_offsets_stable():
+	text = "İstanbul hi"
+	results = list(find_matches(Path("example.txt"), ExtractedText(text), SearchOptions(query="hi")))
+	assert len(results) == 1
+	assert results[0].start == 9
+	assert results[0].preview == "İstanbul hi"
+
+
+def test_position_preserving_lower_does_not_expand_characters():
+	text = "İstanbul"
+	lowered = position_preserving_lower(text)
+	assert len(lowered) == len(text)
 
 
 def test_line_column_for_offset():
