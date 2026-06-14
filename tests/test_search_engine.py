@@ -233,6 +233,19 @@ def test_literal_spans_do_not_overlap():
 	assert list(literal_spans("aaaa", "aa")) == [(0, 2), (2, 4)]
 
 
+def test_exact_fragment_search_matches_across_punctuation():
+	text = "hi -- h-i h i"
+	results = list(find_matches(Path("vocabulary.txt"), ExtractedText(text), SearchOptions(query="hi")))
+	assert [result.preview for result in results] == ["hi -- h-i h i", "hi -- h-i h i", "hi -- h-i h i"]
+	assert [(result.start, result.end) for result in results] == [(0, 2), (6, 9), (10, 13)]
+
+
+def test_exact_whole_word_search_stays_strict_with_punctuation():
+	text = "hi h-i h i"
+	results = list(find_matches(Path("vocabulary.txt"), ExtractedText(text), SearchOptions(query="hi", whole_word=True)))
+	assert [(result.start, result.end) for result in results] == [(0, 2)]
+
+
 def test_path_from_shell_location_url_decodes_file_url():
 	assert path_from_shell_location_url("file:///C:/Users/Tara/Documents/My%20Folder") == "C:\\Users\\Tara\\Documents\\My Folder"
 

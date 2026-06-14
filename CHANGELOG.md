@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.22
+
+- Added foreground-window UI scanning for browser-opened PDFs and made short exact-fragment searches match through punctuation or spacing.
+
 ## 0.3.21
 
 - Prioritized open document detection before folder fallback and made Escape close the main Text Finder dialog more consistently.

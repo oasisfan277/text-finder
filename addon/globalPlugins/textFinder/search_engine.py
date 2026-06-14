@@ -194,7 +194,7 @@ def find_matches(path: Path, extracted: ExtractedText, options: SearchOptions):
 	if options.whole_word:
 		spans = exact_whole_word_spans(search_text, search_query)
 	else:
-		spans = literal_spans(search_text, search_query)
+		spans = exact_fragment_spans(search_text, search_query)
 
 	word_pending = path.suffix.lower() == ".docx"
 	for start, end in spans:
@@ -231,6 +231,52 @@ def literal_spans(text: str, query: str):
 			return
 		yield index, index + len(query)
 		start = index + max(len(query), 1)
+
+
+def exact_fragment_spans(text: str, query: str):
+	seen = set()
+	for span in literal_spans(text, query):
+		seen.add(span)
+		yield span
+	if not should_use_flexible_fragment_search(query):
+		return
+	for span in flexible_fragment_spans(text, query):
+		if span not in seen:
+			seen.add(span)
+			yield span
+
+
+def should_use_flexible_fragment_search(query: str) -> bool:
+	query = query.strip()
+	return query.isalnum() and len(query) <= 20
+
+
+def flexible_fragment_spans(text: str, query: str):
+	query_characters = [character for character in query if character.isalnum()]
+	if not query_characters:
+		return
+	first = query_characters[0]
+	index = 0
+	while True:
+		start = text.find(first, index)
+		if start == -1:
+			return
+		text_index = start + 1
+		query_index = 1
+		while query_index < len(query_characters):
+			while text_index < len(text) and is_fragment_joiner(text[text_index]):
+				text_index += 1
+			if text_index >= len(text) or text[text_index] != query_characters[query_index]:
+				break
+			text_index += 1
+			query_index += 1
+		if query_index == len(query_characters):
+			yield start, text_index
+		index = start + 1
+
+
+def is_fragment_joiner(character: str) -> bool:
+	return bool(character) and not character.isalnum()
 
 
 def line_column_for_offset(text: str, offset: int) -> tuple[int, int]:

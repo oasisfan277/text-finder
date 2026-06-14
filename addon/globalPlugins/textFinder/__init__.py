@@ -541,6 +541,9 @@ def get_open_pdf_document_target():
 		target = document_from_command_line(get_process_command_line(process_id), (".pdf",))
 		if target:
 			return target
+	target = get_open_pdf_document_from_foreground_ui()
+	if target:
+		return target
 	document_name = get_foreground_document_file_name(PDF_VIEWER_APP_NAMES, (".pdf",))
 	if document_name:
 		target = normalize_search_target(document_name)
@@ -551,6 +554,94 @@ def get_open_pdf_document_target():
 	if target:
 		return target
 	return None
+
+
+def get_open_pdf_document_from_foreground_ui():
+	try:
+		completed = subprocess.run(
+			[
+				powershell_executables()[0],
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				PDF_FOREGROUND_UI_SCAN_SCRIPT,
+			],
+			capture_output=True,
+			text=True,
+			timeout=4,
+			creationflags=get_hidden_process_flags(),
+		)
+		if completed.returncode != 0 or not completed.stdout.strip():
+			return None
+		items = json.loads(completed.stdout)
+		if isinstance(items, str):
+			items = [items]
+		for item in items:
+			target = document_path_from_text(item, (".pdf",))
+			if target:
+				return target
+	except Exception:
+		log_exception("Text Finder could not scan the foreground window for an open PDF file.")
+	return None
+
+
+PDF_FOREGROUND_UI_SCAN_SCRIPT = r'''
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class TextFinderWin32 {
+	[DllImport("user32.dll")]
+	public static extern IntPtr GetForegroundWindow();
+}
+"@
+$hwnd = [TextFinderWin32]::GetForegroundWindow()
+if ($hwnd -eq [IntPtr]::Zero) {
+	return
+}
+$root = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
+if (-not $root) {
+	return
+}
+$condition = [System.Windows.Automation.Condition]::TrueCondition
+$elements = @($root) + @($root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition))
+$values = New-Object System.Collections.Generic.List[string]
+$limit = [Math]::Min($elements.Count, 800)
+for ($index = 0; $index -lt $limit; $index++) {
+	$element = $elements[$index]
+	if (-not $element) {
+		continue
+	}
+	try {
+		if ($element.Current.Name) {
+			$values.Add($element.Current.Name)
+		}
+	} catch {
+	}
+	try {
+		$pattern = $null
+		if ($element.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$pattern) -and $pattern.Current.Value) {
+			$values.Add($pattern.Current.Value)
+		}
+	} catch {
+	}
+	try {
+		$legacy = $null
+		if ($element.TryGetCurrentPattern([System.Windows.Automation.LegacyIAccessiblePattern]::Pattern, [ref]$legacy)) {
+			if ($legacy.Current.Name) {
+				$values.Add($legacy.Current.Name)
+			}
+			if ($legacy.Current.Value) {
+				$values.Add($legacy.Current.Value)
+			}
+		}
+	} catch {
+	}
+}
+$values | Where-Object { $_ -match '(?i)(\.pdf|file:///)'} | Select-Object -Unique | ConvertTo-Json -Compress
+'''
 
 
 def get_foreground_process_id():
