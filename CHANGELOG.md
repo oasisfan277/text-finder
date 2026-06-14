@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.19
+
+- Detected open PDF files in common PDF viewers and browsers, including Chrome, so PDF documents can be searched when already open.
+
 ## 0.3.18
 
 - Added an off-by-default setting to close Text Finder automatically after Go to Search Result succeeds.

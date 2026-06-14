@@ -16,6 +16,8 @@ from addon.globalPlugins.textFinder.search_engine import (
 )
 from addon.globalPlugins.textFinder import (
 	can_open_in_notepad,
+	document_file_name_from_object_name,
+	document_from_command_line,
 	file_type_choice_label,
 	file_type_is_selected,
 	format_result_for_list,
@@ -127,6 +129,19 @@ def test_notepad_document_from_command_line_rejects_binary_file():
 		assert notepad_document_from_command_line(command_line) is None
 
 
+def test_pdf_document_from_command_line_finds_open_pdf_file():
+	with tempfile.TemporaryDirectory() as temp_dir:
+		path = Path(temp_dir) / "book.pdf"
+		path.write_text("placeholder", encoding="utf-8")
+		command_line = '"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" "{path}"'.format(path=path)
+		assert document_from_command_line(command_line, (".pdf",)) == str(path)
+
+
+def test_document_file_name_from_browser_pdf_title():
+	assert document_file_name_from_object_name("book.pdf - Google Chrome", (".pdf",)) == "book.pdf"
+	assert document_file_name_from_object_name("book.pdf and another tab - Google Chrome", (".pdf",)) == "book.pdf"
+
+
 def test_notepad_jump_script_reuses_existing_window_before_opening_new_one():
 	command_lookup = NOTEPAD_GO_TO_LINE_SCRIPT.find("Get-CimInstance Win32_Process")
 	start_process = NOTEPAD_GO_TO_LINE_SCRIPT.find("Start-Process")
@@ -203,6 +218,10 @@ def test_literal_spans_do_not_overlap():
 
 def test_path_from_shell_location_url_decodes_file_url():
 	assert path_from_shell_location_url("file:///C:/Users/Tara/Documents/My%20Folder") == "C:\\Users\\Tara\\Documents\\My Folder"
+
+
+def test_path_from_shell_location_url_ignores_pdf_page_fragment():
+	assert path_from_shell_location_url("file:///C:/Users/Tara/Documents/book.pdf#page=3") == "C:\\Users\\Tara\\Documents\\book.pdf"
 
 
 def test_render_invisible_text_makes_whitespace_readable():

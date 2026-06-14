@@ -72,6 +72,15 @@ except NameError:
 
 
 CONFIG_SECTION = "textFinder"
+PDF_VIEWER_APP_NAMES = {
+	"acrobat",
+	"acrord32",
+	"applicationframehost",
+	"chrome",
+	"firefox",
+	"msedge",
+	"sumatrapdf",
+}
 
 
 def _initialize_config():
@@ -458,6 +467,10 @@ def get_open_document_target():
 		target = get_notepad_active_document_target()
 		if target:
 			return target
+	if app_name in PDF_VIEWER_APP_NAMES:
+		target = get_open_pdf_document_target()
+		if target:
+			return target
 	if app_name in {"winword", "word"}:
 		target = get_open_word_document_target_from_nvda()
 		if target:
@@ -506,11 +519,26 @@ def get_open_word_document_target_from_nvda():
 def get_notepad_active_document_target():
 	process_id = get_foreground_process_id()
 	if process_id:
-		target = notepad_document_from_command_line(get_process_command_line(process_id))
+		target = document_from_command_line(get_process_command_line(process_id), tuple(PLAIN_TEXT_EXTENSIONS | {".html", ".htm", ".rtf"}))
 		if target:
 			return target
 	document_name = get_foreground_document_file_name({"notepad"}, tuple(PLAIN_TEXT_EXTENSIONS | {".html", ".htm", ".rtf"}))
 	if document_name:
+		return find_matching_file_in_shell_windows(document_name)
+	return None
+
+
+def get_open_pdf_document_target():
+	process_id = get_foreground_process_id()
+	if process_id:
+		target = document_from_command_line(get_process_command_line(process_id), (".pdf",))
+		if target:
+			return target
+	document_name = get_foreground_document_file_name(PDF_VIEWER_APP_NAMES, (".pdf",))
+	if document_name:
+		target = normalize_search_target(document_name)
+		if target:
+			return target
 		return find_matching_file_in_shell_windows(document_name)
 	return None
 
@@ -553,11 +581,15 @@ def get_process_command_line(process_id):
 
 
 def notepad_document_from_command_line(command_line):
+	return document_from_command_line(command_line, tuple(PLAIN_TEXT_EXTENSIONS | {".html", ".htm", ".rtf"}))
+
+
+def document_from_command_line(command_line, suffixes):
 	for argument in split_windows_command_line(command_line)[1:]:
 		if argument.startswith(("/", "-")):
 			continue
 		target = normalize_search_target(argument)
-		if target and can_open_in_notepad(Path(target)):
+		if target and Path(target).suffix.lower() in suffixes:
 			return target
 	return None
 
