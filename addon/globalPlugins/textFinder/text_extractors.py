@@ -350,14 +350,53 @@ def extract_pptx(path: Path) -> ExtractedText:
 	return ExtractedText(text)
 
 
-def extract_pdf(path: Path) -> ExtractedText:
+def _prepare_pdf_dependencies() -> None:
+	# NVDA ships a frozen Python whose library.zip is only a SUBSET of the
+	# standard library, so some modules pypdf imports are missing there. Make
+	# the vendored stand-ins importable before pypdf is imported.
 	vendor_path = Path(__file__).resolve().parent / "_vendor"
 	if vendor_path.exists() and str(vendor_path) not in sys.path:
+		# Also puts the vendored "secrets" module (missing from NVDA) on the path.
 		sys.path.insert(0, str(vendor_path))
+	# pypdf imports xml.dom.minidom for XMP metadata. NVDA keeps xml.etree but
+	# strips xml.dom. Register the vendored xml.dom as a subpackage of the real
+	# xml package via an explicit spec (extending xml.__path__ is unreliable in
+	# NVDA's frozen import system). This lets pypdf import xml.dom.minidom without
+	# shadowing the real xml package, which xml.etree elsewhere still needs.
+	try:
+		import xml.dom.minidom  # noqa: F401
+	except Exception:
+		try:
+			import importlib.util
+			import xml
+
+			dom_dir = vendor_path / "_stdlib" / "xml" / "dom"
+			if dom_dir.is_dir() and "xml.dom" not in sys.modules:
+				spec = importlib.util.spec_from_file_location(
+					"xml.dom",
+					str(dom_dir / "__init__.py"),
+					submodule_search_locations=[str(dom_dir)],
+				)
+				module = importlib.util.module_from_spec(spec)
+				sys.modules["xml.dom"] = module
+				spec.loader.exec_module(module)
+				xml.dom = module
+		except Exception:
+			pass
+
+
+def extract_pdf(path: Path) -> ExtractedText:
+	_prepare_pdf_dependencies()
 	try:
 		from pypdf import PdfReader
 	except Exception as exc:
-		raise TextExtractionError("unsupported", "PDF text extraction is not available in this installation.") from exc
+		# Surface the underlying cause (for example a stdlib module missing from
+		# NVDA's frozen Python) so the search statistics name the real problem
+		# instead of a generic "not available" message.
+		raise TextExtractionError(
+			"unsupported",
+			"PDF text extraction is not available in this installation: {error}".format(error=exc),
+		) from exc
 	try:
 		reader = PdfReader(str(path))
 		parts = []

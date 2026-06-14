@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.29
+
+- Fixed PDF searches returning no results on NVDA, whose bundled Python omits the `secrets` and `xml.dom` modules that the PDF reader needs; these are now provided with the add-on.
+- Sped up opening Text Finder by only scanning for an open PDF document when PDF is one of the file types being searched.
+
 ## 0.3.28
 
 - Fixed single-file searches turning off the saved include-subfolders option for later folder searches.

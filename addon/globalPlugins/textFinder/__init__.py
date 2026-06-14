@@ -143,6 +143,19 @@ def get_active_file_patterns():
 	return tuple("*{ext}".format(ext=ext) for ext in selected)
 
 
+def pdf_is_searched():
+	# Detecting an open PDF at launch runs several PowerShell scans, which slows
+	# down every Text Finder launch. Only do that work when PDF is actually one
+	# of the file types being searched, so launching stays fast when PDFs are not
+	# in scope. Mirrors the fallback-to-all-types rule in get_active_file_patterns.
+	if get_setting("searchAllFileTypes"):
+		return True
+	selected = parse_extension_list(get_setting("searchFileTypes"))
+	if not selected:
+		return True
+	return ".pdf" in selected
+
+
 def active_file_types_summary():
 	if get_setting("searchAllFileTypes"):
 		return _("All supported file types")
@@ -485,7 +498,7 @@ def get_open_document_target():
 		target = get_notepad_active_document_target()
 		if target:
 			return target
-	if app_name in PDF_VIEWER_APP_NAMES:
+	if app_name in PDF_VIEWER_APP_NAMES and pdf_is_searched():
 		target = get_open_pdf_document_target()
 		if target:
 			return target
@@ -510,9 +523,10 @@ def get_open_document_target():
 		target = get_office_active_document_target(office_app)
 		if target:
 			return target
-	target = get_open_pdf_document_target()
-	if target:
-		return target
+	if pdf_is_searched():
+		target = get_open_pdf_document_target()
+		if target:
+			return target
 	return None
 
 
