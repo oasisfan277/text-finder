@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.26
+
+- Added match counts by file type to search summaries and used Windows recent PDFs as another fallback for browser-opened PDF detection.
+
 ## 0.3.25
 
 - Defaulted folder searches to include subfolders and matched Chrome PDF titles without a `.pdf` extension to local PDF files.

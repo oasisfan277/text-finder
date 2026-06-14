@@ -4,6 +4,7 @@ import fnmatch
 import re
 import time
 from dataclasses import dataclass, field
+from collections import Counter
 from pathlib import Path
 
 from .text_extractors import ExtractedText, TextExtractionError, extract_text
@@ -55,6 +56,7 @@ class SearchStatistics:
 	duration: float = 0.0
 	matches_found: int = 0
 	files_with_matches: set[Path] = field(default_factory=set)
+	matches_by_extension: Counter = field(default_factory=Counter)
 	supported_files_searched: int = 0
 	unsupported_files: list[tuple[Path, str]] = field(default_factory=list)
 	no_extractable_text_files: list[tuple[Path, str]] = field(default_factory=list)
@@ -78,6 +80,9 @@ class SearchStatistics:
 			start = f"Search complete. {self.matches_found} matches found in {len(self.files_with_matches)} files."
 		else:
 			start = "Search complete. No matches found."
+		type_summary = self.match_type_summary()
+		if type_summary:
+			start = f"{start} {type_summary}."
 		return (
 			f"{start} {self.supported_files_searched} supported files searched. "
 			f"{len(self.unsupported_files)} unsupported files skipped. "
@@ -111,6 +116,7 @@ class SearchStatistics:
 			f"Search text length: {len(self.options.query)}",
 			f"Matches found: {self.matches_found}",
 			f"Files containing matches: {len(self.files_with_matches)}",
+			f"Matches by file type: {self.match_type_summary() or 'none'}",
 			f"Supported files searched: {self.supported_files_searched}",
 			f"Unsupported files skipped: {len(self.unsupported_files)}",
 			f"Files with no extractable text: {len(self.no_extractable_text_files)}",
@@ -128,6 +134,15 @@ class SearchStatistics:
 		lines.extend(["", title])
 		for path, reason in entries:
 			lines.extend([str(path), f"Reason: {reason}", ""])
+
+	def match_type_summary(self) -> str:
+		if not self.matches_by_extension:
+			return ""
+		parts = []
+		for extension, count in sorted(self.matches_by_extension.items()):
+			label = extension.upper().lstrip(".") if extension else "unknown"
+			parts.append(f"{count} {label}")
+		return ", ".join(parts)
 
 
 class Searcher:
@@ -170,6 +185,7 @@ class Searcher:
 			if file_results:
 				statistics.files_with_matches.add(path)
 				statistics.matches_found += len(file_results)
+				statistics.matches_by_extension[path.suffix.lower()] += len(file_results)
 		statistics.duration = time.monotonic() - started
 		return results, statistics
 

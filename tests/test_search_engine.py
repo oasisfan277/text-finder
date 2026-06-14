@@ -496,6 +496,18 @@ def test_single_file_statistics_omit_folder_counts():
 		assert "Files containing matches" not in report
 
 
+def test_folder_statistics_include_match_counts_by_file_type():
+	with tempfile.TemporaryDirectory() as temp_dir:
+		folder = Path(temp_dir)
+		(folder / "notes.txt").write_text("hi", encoding="utf-8")
+		(folder / "more.md").write_text("hi", encoding="utf-8")
+		results, statistics = Searcher(folder, SearchOptions(query="hi", file_patterns=("*.txt", "*.md"))).search()
+		assert len(results) == 2
+		assert "1 MD" in statistics.summary_message()
+		assert "1 TXT" in statistics.summary_message()
+		assert "Matches by file type:" in statistics.to_report()
+
+
 def test_single_file_statistics_report_unreadable_file():
 	with tempfile.TemporaryDirectory() as temp_dir:
 		path = Path(temp_dir) / "book.docx"

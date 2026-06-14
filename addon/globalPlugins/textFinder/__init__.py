@@ -569,6 +569,9 @@ def get_open_pdf_document_target():
 		target = find_matching_pdf_by_title(document_title)
 		if target:
 			return target
+	target = get_recent_pdf_document_target()
+	if target:
+		return target
 	target = get_open_pdf_document_from_running_processes()
 	if target:
 		return target
@@ -715,6 +718,52 @@ def document_from_command_line(command_line, suffixes):
 		if target and Path(target).suffix.lower() in suffixes:
 			return target
 	return None
+
+
+def get_recent_pdf_document_target():
+	try:
+		completed = subprocess.run(
+			[
+				powershell_executables()[0],
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				RECENT_PDF_SCRIPT,
+			],
+			capture_output=True,
+			text=True,
+			timeout=4,
+			creationflags=get_hidden_process_flags(),
+		)
+		if completed.returncode == 0 and completed.stdout.strip():
+			return normalize_search_target(completed.stdout.strip())
+	except Exception:
+		log_exception("Text Finder could not inspect recent PDF documents.")
+	return None
+
+
+RECENT_PDF_SCRIPT = r'''
+$recent = [Environment]::GetFolderPath('Recent')
+if (-not $recent) {
+	return
+}
+$shell = New-Object -ComObject WScript.Shell
+Get-ChildItem -Path $recent -Filter '*.lnk' -ErrorAction SilentlyContinue |
+	Sort-Object LastWriteTime -Descending |
+	Select-Object -First 40 |
+	ForEach-Object {
+		try {
+			$shortcut = $shell.CreateShortcut($_.FullName)
+			$target = $shortcut.TargetPath
+			if ($target -and $target.EndsWith('.pdf', [StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $target)) {
+				$target
+				break
+			}
+		} catch {
+		}
+	}
+'''
 
 
 def get_open_pdf_document_from_running_processes():
