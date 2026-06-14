@@ -1264,6 +1264,7 @@ class TextFinderDialog(wx.Dialog):
 		if not query:
 			ui.message(_("Enter text to search for."))
 			return
+		file_search = self.is_file_search()
 		self.searchButton.Disable()
 		self.resultsCtrl.Clear()
 		self._cancel_search.clear()
@@ -1272,11 +1273,11 @@ class TextFinderDialog(wx.Dialog):
 			query=query,
 			whole_word=self.exactWholeWordCtrl.GetValue(),
 			case_sensitive=self.caseCtrl.GetValue(),
-			include_subfolders=False if self.is_file_search() else self.subfoldersCtrl.GetValue(),
+			include_subfolders=False if file_search else self.subfoldersCtrl.GetValue(),
 			file_patterns=get_active_file_patterns(),
 			report_page_numbers=self.reportPagesCtrl.GetValue(),
 		)
-		self._save_search_options(options)
+		self._save_search_options(options, save_include_subfolders=not file_search)
 		log_info(
 			"Text Finder search started. mode=%s case_sensitive=%s include_subfolders=%s filter_count=%d query_length=%d report_pages=%s",
 			"whole word" if options.whole_word else "fragment",
@@ -1296,10 +1297,11 @@ class TextFinderDialog(wx.Dialog):
 		self._cancel_search.set()
 		self.Destroy()
 
-	def _save_search_options(self, options):
+	def _save_search_options(self, options, save_include_subfolders=True):
 		set_setting("searchWholeWord", options.whole_word)
 		set_setting("searchCaseSensitive", options.case_sensitive)
-		set_setting("searchIncludeSubfolders", options.include_subfolders)
+		if save_include_subfolders:
+			set_setting("searchIncludeSubfolders", options.include_subfolders)
 		set_setting("reportPageNumbers", options.report_page_numbers)
 		save_config()
 

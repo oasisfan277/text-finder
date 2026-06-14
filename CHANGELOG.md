@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.28
+
+- Fixed single-file searches turning off the saved include-subfolders option for later folder searches.
+
 ## 0.3.27
 
 - Clarified folder search summaries by reporting both searched file types and match counts by file type.
