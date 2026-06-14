@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.25
+
+- Defaulted folder searches to include subfolders and matched Chrome PDF titles without a `.pdf` extension to local PDF files.
+
 ## 0.3.24
 
 - Fixed a PDF search crash caused by Unicode offset changes and cancelled running searches when Text Finder is closed.

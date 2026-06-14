@@ -19,6 +19,7 @@ from addon.globalPlugins.textFinder import (
 	can_open_in_notepad,
 	document_file_name_from_object_name,
 	document_path_from_text,
+	document_title_from_object_name,
 	document_from_command_line,
 	active_file_types_summary,
 	file_type_choice_label,
@@ -32,6 +33,7 @@ from addon.globalPlugins.textFinder import (
 	word_file_name_from_object_name,
 	open_word_document_read_only,
 	ordered_supported_file_types,
+	normalize_match_text,
 	normalize_search_folder,
 	normalize_search_target,
 	notepad_document_from_command_line,
@@ -108,6 +110,11 @@ def test_close_after_go_to_result_is_off_by_default():
 	assert get_setting("closeAfterGoToResult") is False
 
 
+def test_include_subfolders_is_on_by_default():
+	assert SETTING_DEFAULTS["searchIncludeSubfolders"] is True
+	assert get_setting("searchIncludeSubfolders") is True
+
+
 def test_word_file_name_from_word_window_title():
 	assert word_file_name_from_object_name("Grimm fairytales for bookclub.docx - Word") == "Grimm fairytales for bookclub.docx"
 
@@ -159,6 +166,15 @@ def test_document_path_from_text_finds_pdf_path_inside_accessible_text():
 def test_document_file_name_from_browser_pdf_title():
 	assert document_file_name_from_object_name("book.pdf - Google Chrome", (".pdf",)) == "book.pdf"
 	assert document_file_name_from_object_name("book.pdf and another tab - Google Chrome", (".pdf",)) == "book.pdf"
+
+
+def test_document_title_from_browser_title_without_pdf_extension():
+	assert document_title_from_object_name("get talking norwegian - Google Chrome") == "get talking norwegian"
+	assert document_title_from_object_name("New tab") is None
+
+
+def test_normalize_match_text_ignores_punctuation_and_case():
+	assert normalize_match_text("Get Talking Norwegian!") == "get talking norwegian"
 
 
 def test_notepad_jump_script_reuses_existing_window_before_opening_new_one():

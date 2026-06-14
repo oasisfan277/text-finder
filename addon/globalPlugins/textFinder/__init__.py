@@ -95,7 +95,7 @@ def _initialize_config():
 		"closeAfterGoToResult": "boolean(default=False)",
 		"searchWholeWord": "boolean(default=False)",
 		"searchCaseSensitive": "boolean(default=False)",
-		"searchIncludeSubfolders": "boolean(default=False)",
+		"searchIncludeSubfolders": "boolean(default=True)",
 		"searchAllFileTypes": "boolean(default=True)",
 		"searchFileTypes": "string(default='')",
 	}
@@ -109,7 +109,7 @@ SETTING_DEFAULTS = {
 	"closeAfterGoToResult": False,
 	"searchWholeWord": False,
 	"searchCaseSensitive": False,
-	"searchIncludeSubfolders": False,
+	"searchIncludeSubfolders": True,
 	"searchAllFileTypes": True,
 	"searchFileTypes": "",
 }
@@ -564,6 +564,11 @@ def get_open_pdf_document_target():
 		if target:
 			return target
 		return find_matching_file_in_shell_windows(document_name)
+	document_title = get_foreground_document_title(PDF_VIEWER_APP_NAMES)
+	if document_title:
+		target = find_matching_pdf_by_title(document_title)
+		if target:
+			return target
 	target = get_open_pdf_document_from_running_processes()
 	if target:
 		return target
@@ -823,6 +828,27 @@ def get_foreground_document_file_name(app_names, suffixes):
 	return None
 
 
+def get_foreground_document_title(app_names):
+	try:
+		import api
+
+		for obj in (api.getFocusObject(), api.getForegroundObject(), api.getNavigatorObject()):
+			current = obj
+			seen = set()
+			while current and id(current) not in seen:
+				seen.add(id(current))
+				app_module = getattr(current, "appModule", None)
+				app_name = str(getattr(app_module, "appName", "") or "").lower()
+				if app_name in app_names:
+					title = document_title_from_object_name(getattr(current, "name", None))
+					if title:
+						return title
+				current = getattr(current, "parent", None)
+	except Exception:
+		pass
+	return None
+
+
 def word_file_name_from_object_name(name):
 	return document_file_name_from_object_name(name, (".docx", ".docm", ".doc", ".rtf"))
 
@@ -842,6 +868,92 @@ def document_file_name_from_object_name(name, suffixes):
 		if index >= 0:
 			return name[: index + len(suffix)]
 	return None
+
+
+def document_title_from_object_name(name):
+	if not name:
+		return None
+	title = str(name).strip()
+	for suffix in (" - Google Chrome", " - Microsoft Edge", " - Mozilla Firefox", " - Adobe Acrobat", " - Adobe Reader", " - SumatraPDF"):
+		if title.endswith(suffix):
+			title = title[: -len(suffix)].strip()
+	if title.startswith("*"):
+		title = title[1:].strip()
+	if title.lower().endswith(".pdf"):
+		title = title[:-4].strip()
+	if not title or title.lower() in {"google chrome", "microsoft edge", "mozilla firefox", "new tab"}:
+		return None
+	return title
+
+
+def find_matching_pdf_by_title(title):
+	normalized_title = normalize_match_text(title)
+	if not normalized_title:
+		return None
+	candidates = []
+	for root in pdf_search_roots():
+		if not root or not root.exists():
+			continue
+		try:
+			paths = root.rglob("*.pdf") if root.is_dir() else [root]
+			for path in paths:
+				if not path.is_file():
+					continue
+				stem = normalize_match_text(path.stem)
+				if stem == normalized_title or normalized_title in stem or stem in normalized_title:
+					if path not in candidates:
+						candidates.append(path)
+				if len(candidates) > 1:
+					break
+		except Exception:
+			continue
+		if len(candidates) > 1:
+			break
+	if len(candidates) == 1:
+		return str(candidates[0])
+	return None
+
+
+def pdf_search_roots():
+	roots = []
+	for path in foreground_shell_roots():
+		if path and path not in roots:
+			roots.append(path)
+	home = Path.home()
+	onedrive = os.environ.get("OneDrive")
+	known_roots = []
+	if onedrive:
+		known_roots.append(Path(onedrive))
+	known_roots.extend([home / "OneDrive" / "Documents", home / "Documents"])
+	for path in known_roots:
+		if path and path not in roots:
+			roots.append(path)
+	return roots
+
+
+def foreground_shell_roots():
+	roots = []
+	try:
+		shell = get_shell_application()
+		for window in shell.Windows():
+			try:
+				target = get_selected_target_from_shell_window(window) or normalize_search_target(window.LocationURL)
+				if target:
+					path = Path(target)
+					root = path if path.is_dir() else path.parent
+					if root not in roots:
+						roots.append(root)
+			except Exception:
+				continue
+	except Exception:
+		pass
+	return roots
+
+
+def normalize_match_text(text):
+	text = str(text).casefold()
+	text = re.sub(r"[^0-9a-z\u00c0-\u024f]+", " ", text)
+	return " ".join(text.split())
 
 
 def find_matching_file_in_shell_windows(file_name):
