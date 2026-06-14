@@ -143,6 +143,20 @@ def get_active_file_patterns():
 	return tuple("*{ext}".format(ext=ext) for ext in selected)
 
 
+def active_file_types_summary():
+	if get_setting("searchAllFileTypes"):
+		return _("All supported file types")
+	selected = set(parse_extension_list(get_setting("searchFileTypes")))
+	if not selected:
+		return _("All supported file types")
+	labels = []
+	for label, extensions in SUPPORTED_FILE_TYPES:
+		if any(extension in selected for extension in extensions):
+			labels.append(label)
+	if not labels:
+		return _("All supported file types")
+	return ", ".join(labels)
+
 
 def file_type_is_selected(search_all, selected_extensions, extensions):
 	return search_all or any(ext in selected_extensions for ext in extensions)
@@ -1005,6 +1019,7 @@ class TextFinderDialog(wx.Dialog):
 		file_search = self.is_file_search()
 		mainSizer = wx.BoxSizer(wx.VERTICAL)
 		mainSizer.Add(wx.StaticText(self, label=_("Search target: {target}").format(target=self.target)), 0, wx.ALL, 8)
+		mainSizer.Add(wx.StaticText(self, label=_("File types: {file_types}").format(file_types=active_file_types_summary())), 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
 		mainSizer.Add(wx.StaticText(self, label=_("Search &text:")), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		self.queryCtrl = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_PROCESS_ENTER)
@@ -1047,7 +1062,7 @@ class TextFinderDialog(wx.Dialog):
 		self.goToResultButton = wx.Button(self, label=_("&Go to Search Result"))
 		self.openButton = wx.Button(self, label=_("&Open Result"))
 		self.statsButton = wx.Button(self, label=_("Search Stat&istics"))
-		self.closeButton = wx.Button(self, wx.ID_CLOSE)
+		self.closeButton = wx.Button(self, wx.ID_CANCEL, _("Close"))
 		buttons = [self.searchButton]
 		buttons.append(self.goToResultButton)
 		if file_search:
@@ -1070,10 +1085,11 @@ class TextFinderDialog(wx.Dialog):
 		self.goToResultButton.Bind(wx.EVT_BUTTON, self.on_go_to_result)
 		self.openButton.Bind(wx.EVT_BUTTON, self.on_open_result)
 		self.statsButton.Bind(wx.EVT_BUTTON, self.on_statistics)
-		self.closeButton.Bind(wx.EVT_BUTTON, lambda evt: self.Destroy())
+		self.closeButton.Bind(wx.EVT_BUTTON, self.on_close)
 		self.Bind(wx.EVT_CHAR_HOOK, self.on_dialog_char_hook)
-		self.Bind(wx.EVT_MENU, lambda evt: self.Destroy(), id=wx.ID_CLOSE)
-		self.SetAcceleratorTable(wx.AcceleratorTable([(wx.ACCEL_NORMAL, wx.WXK_ESCAPE, wx.ID_CLOSE)]))
+		self.Bind(wx.EVT_MENU, self.on_close, id=wx.ID_CANCEL)
+		self.SetEscapeId(wx.ID_CANCEL)
+		self.SetAcceleratorTable(wx.AcceleratorTable([(wx.ACCEL_NORMAL, wx.WXK_ESCAPE, wx.ID_CANCEL)]))
 		self.queryCtrl.Bind(wx.EVT_CHAR_HOOK, self.on_query_char_hook)
 		self.queryCtrl.Bind(wx.EVT_TEXT, self.on_query_text)
 		self.resultsCtrl.Bind(wx.EVT_LISTBOX_DCLICK, self.on_activate_result)
@@ -1086,7 +1102,7 @@ class TextFinderDialog(wx.Dialog):
 			return
 		self.searchButton.Disable()
 		self.resultsCtrl.Clear()
-		ui.message(_("Searching."))
+		ui.message(_("Searching {file_types}.").format(file_types=active_file_types_summary()))
 		options = SearchOptions(
 			query=query,
 			whole_word=self.exactWholeWordCtrl.GetValue(),
@@ -1107,6 +1123,9 @@ class TextFinderDialog(wx.Dialog):
 		)
 		thread = threading.Thread(target=self._run_search, args=(options,), daemon=True)
 		thread.start()
+
+	def on_close(self, evt):
+		self.Destroy()
 
 	def _save_search_options(self, options):
 		set_setting("searchWholeWord", options.whole_word)

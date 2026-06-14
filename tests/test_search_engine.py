@@ -19,6 +19,7 @@ from addon.globalPlugins.textFinder import (
 	document_file_name_from_object_name,
 	document_path_from_text,
 	document_from_command_line,
+	active_file_types_summary,
 	file_type_choice_label,
 	file_type_is_selected,
 	format_result_for_list,
@@ -541,3 +542,7 @@ def test_active_file_patterns_default_to_all_supported_types():
 	assert "*.xlsx" in patterns
 	assert "*.pptx" in patterns
 	assert "*.docx" in patterns
+
+
+def test_active_file_types_summary_defaults_to_all_supported_types():
+	assert active_file_types_summary() == "All supported file types"

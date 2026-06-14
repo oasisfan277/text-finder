@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.23
+
+- Made the active file-type filter visible in the search dialog and reset the close button to a standard Escape-friendly dialog button.
+
 ## 0.3.22
 
 - Added foreground-window UI scanning for browser-opened PDFs and made short exact-fragment searches match through punctuation or spacing.
