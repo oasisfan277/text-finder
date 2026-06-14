@@ -20,6 +20,7 @@ from addon.globalPlugins.textFinder import (
 	file_type_is_selected,
 	format_result_for_list,
 	get_active_file_patterns,
+	get_setting,
 	get_open_word_visual_locations,
 	get_word_active_document_path,
 	OPEN_WORD_LOCATION_SCRIPT,
@@ -34,6 +35,7 @@ from addon.globalPlugins.textFinder import (
 	path_from_shell_location_url,
 	pdf_page_uri,
 	render_invisible_text,
+	SETTING_DEFAULTS,
 )
 from addon.globalPlugins.textFinder.text_extractors import (
 	ExtractedText,
@@ -94,6 +96,11 @@ def test_selected_file_types_are_ordered_first_when_search_all_is_off():
 	assert ordered[0][0] == "Word documents (.docx)"
 	assert ordered[1][0] == "PDF documents (.pdf)"
 	assert ordered_supported_file_types(True, {".docx"})[0][0] == "Plain text and logs (.txt, .log)"
+
+
+def test_close_after_go_to_result_is_off_by_default():
+	assert SETTING_DEFAULTS["closeAfterGoToResult"] is False
+	assert get_setting("closeAfterGoToResult") is False
 
 
 def test_word_file_name_from_word_window_title():

@@ -82,6 +82,7 @@ def _initialize_config():
 		"announceInvisibleCharacters": "boolean(default=False)",
 		"reportPageNumbers": "boolean(default=True)",
 		"showFullPath": "boolean(default=False)",
+		"closeAfterGoToResult": "boolean(default=False)",
 		"searchWholeWord": "boolean(default=False)",
 		"searchCaseSensitive": "boolean(default=False)",
 		"searchIncludeSubfolders": "boolean(default=False)",
@@ -95,6 +96,7 @@ SETTING_DEFAULTS = {
 	"announceInvisibleCharacters": False,
 	"reportPageNumbers": True,
 	"showFullPath": False,
+	"closeAfterGoToResult": False,
 	"searchWholeWord": False,
 	"searchCaseSensitive": False,
 	"searchIncludeSubfolders": False,
@@ -270,6 +272,10 @@ class TextFinderSettingsPanel(SettingsPanel):
 			wx.CheckBox(self, label=_("Show the full file path in search results"))
 		)
 		self.showFullPathCtrl.SetValue(get_setting("showFullPath"))
+		self.closeAfterGoToResultCtrl = settingsSizerHelper.addItem(
+			wx.CheckBox(self, label=_("Close Text Finder automatically after Go to Search Result"))
+		)
+		self.closeAfterGoToResultCtrl.SetValue(get_setting("closeAfterGoToResult"))
 
 		self.searchAllFileTypesCtrl = settingsSizerHelper.addItem(
 			wx.CheckBox(self, label=_("Search all supported file types"))
@@ -315,6 +321,7 @@ class TextFinderSettingsPanel(SettingsPanel):
 		config.conf[CONFIG_SECTION]["announceInvisibleCharacters"] = self.announceInvisibleCharactersCtrl.GetValue()
 		config.conf[CONFIG_SECTION]["reportPageNumbers"] = self.reportPageNumbersCtrl.GetValue()
 		config.conf[CONFIG_SECTION]["showFullPath"] = self.showFullPathCtrl.GetValue()
+		config.conf[CONFIG_SECTION]["closeAfterGoToResult"] = self.closeAfterGoToResultCtrl.GetValue()
 		config.conf[CONFIG_SECTION]["searchAllFileTypes"] = self.searchAllFileTypesCtrl.GetValue()
 		chosen_extensions = []
 		for index, (_label, extensions) in enumerate(self.fileTypeChoices):
@@ -1139,6 +1146,7 @@ class TextFinderDialog(wx.Dialog):
 				index = self.resultsCtrl.GetSelection()
 				self.results[index] = updated_result
 				self.resultsCtrl.SetString(index, format_result_for_list(updated_result))
+			self.close_after_go_to_result_if_enabled(updated_result)
 			return
 		try:
 			extracted_text = extract_text(result.path).text
@@ -1151,6 +1159,11 @@ class TextFinderDialog(wx.Dialog):
 			index = self.resultsCtrl.GetSelection()
 			self.results[index] = updated_result
 			self.resultsCtrl.SetString(index, format_result_for_list(updated_result))
+		self.close_after_go_to_result_if_enabled(updated_result)
+
+	def close_after_go_to_result_if_enabled(self, updated_result):
+		if updated_result is not None and get_setting("closeAfterGoToResult"):
+			self.Destroy()
 
 	def get_selected_result(self):
 		index = self.resultsCtrl.GetSelection()
@@ -1452,7 +1465,7 @@ def go_to_word_result(result, extracted_text):
 			ui.message(_("Moved to page {page}, visual line {line}.").format(page=page, line=visual_line))
 			return replace(result, page=page, line=visual_line, column=0, location_unit="Visual line", word_pending=False)
 		ui.message(_("Could not move to this result in the open Word document."))
-		return result
+		return None
 	except Exception:
 		log_exception("Text Finder could not move to the Word result.")
 		ui.message(_("Could not move to this result in Word."))
@@ -1466,7 +1479,7 @@ def go_to_non_word_result(result):
 	if can_open_in_notepad(result.path):
 		return go_to_text_editor_result(result)
 	ui.message(_("Go to Search Result is not available for this file type."))
-	return result
+	return None
 
 
 def can_open_in_notepad(path):

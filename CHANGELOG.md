@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.18
+
+- Added an off-by-default setting to close Text Finder automatically after Go to Search Result succeeds.
+
 ## 0.3.17
 
 - Reused an already-open Notepad window when jumping to a search result in a text file, opening Notepad only as a fallback.
