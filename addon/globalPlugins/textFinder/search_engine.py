@@ -4,7 +4,6 @@ import fnmatch
 import re
 import time
 from dataclasses import dataclass, field
-from collections import Counter
 from pathlib import Path
 
 from .text_extractors import ExtractedText, TextExtractionError, extract_text
@@ -56,8 +55,6 @@ class SearchStatistics:
 	duration: float = 0.0
 	matches_found: int = 0
 	files_with_matches: set[Path] = field(default_factory=set)
-	matches_by_extension: Counter = field(default_factory=Counter)
-	searched_by_extension: Counter = field(default_factory=Counter)
 	supported_files_searched: int = 0
 	unsupported_files: list[tuple[Path, str]] = field(default_factory=list)
 	no_extractable_text_files: list[tuple[Path, str]] = field(default_factory=list)
@@ -81,12 +78,6 @@ class SearchStatistics:
 			start = f"Search complete. {self.matches_found} matches found in {len(self.files_with_matches)} files."
 		else:
 			start = "Search complete. No matches found."
-		type_summary = self.match_type_summary()
-		if type_summary:
-			start = f"{start} Matches by file type: {type_summary}."
-		searched_summary = self.searched_type_summary()
-		if searched_summary:
-			start = f"{start} Searched file types: {searched_summary}."
 		return (
 			f"{start} {self.supported_files_searched} supported files searched. "
 			f"{len(self.unsupported_files)} unsupported files skipped. "
@@ -120,8 +111,6 @@ class SearchStatistics:
 			f"Search text length: {len(self.options.query)}",
 			f"Matches found: {self.matches_found}",
 			f"Files containing matches: {len(self.files_with_matches)}",
-			f"Matches by file type: {self.match_type_summary() or 'none'}",
-			f"Searched file types: {self.searched_type_summary() or 'none'}",
 			f"Supported files searched: {self.supported_files_searched}",
 			f"Unsupported files skipped: {len(self.unsupported_files)}",
 			f"Files with no extractable text: {len(self.no_extractable_text_files)}",
@@ -140,24 +129,6 @@ class SearchStatistics:
 		for path, reason in entries:
 			lines.extend([str(path), f"Reason: {reason}", ""])
 
-	def match_type_summary(self) -> str:
-		return extension_count_summary(self.matches_by_extension)
-
-	def searched_type_summary(self) -> str:
-		return extension_count_summary(self.searched_by_extension, include_files=True)
-
-
-def extension_count_summary(counts: Counter, include_files: bool = False) -> str:
-	if not counts:
-		return ""
-	parts = []
-	for extension, count in sorted(counts.items()):
-		label = extension.upper().lstrip(".") if extension else "unknown"
-		file_word = "file" if count == 1 else "files"
-		suffix = f" {file_word}" if include_files else ""
-		parts.append(f"{count} {label}{suffix}")
-	return ", ".join(parts)
-
 
 class Searcher:
 	def __init__(self, target: Path, options: SearchOptions):
@@ -165,13 +136,11 @@ class Searcher:
 		self.folder = self.target
 		self.options = options
 
-	def search(self, should_cancel=None) -> tuple[list[SearchResult], SearchStatistics]:
+	def search(self) -> tuple[list[SearchResult], SearchStatistics]:
 		started = time.monotonic()
 		statistics = SearchStatistics(self.folder, self.options)
 		results: list[SearchResult] = []
 		for path in self._iter_candidate_files():
-			if should_cancel and should_cancel():
-				break
 			if not self.target.is_file() and not self._matches_patterns(path):
 				statistics.unsupported_files.append((path, "File does not match the selected file filters."))
 				continue
@@ -191,16 +160,12 @@ class Searcher:
 			except OSError as exc:
 				statistics.unreadable_files.append((path, str(exc)))
 				continue
-			if should_cancel and should_cancel():
-				break
 			statistics.supported_files_searched += 1
-			statistics.searched_by_extension[path.suffix.lower()] += 1
 			file_results = list(find_matches(path, extracted, self.options))
 			results.extend(file_results)
 			if file_results:
 				statistics.files_with_matches.add(path)
 				statistics.matches_found += len(file_results)
-				statistics.matches_by_extension[path.suffix.lower()] += len(file_results)
 		statistics.duration = time.monotonic() - started
 		return results, statistics
 
@@ -220,8 +185,8 @@ def find_matches(path: Path, extracted: ExtractedText, options: SearchOptions):
 	text = extracted.text
 	query = options.query
 	if not options.case_sensitive:
-		search_text = position_preserving_lower(text)
-		search_query = position_preserving_lower(query)
+		search_text = text.casefold()
+		search_query = query.casefold()
 	else:
 		search_text = text
 		search_query = query
@@ -229,13 +194,10 @@ def find_matches(path: Path, extracted: ExtractedText, options: SearchOptions):
 	if options.whole_word:
 		spans = exact_whole_word_spans(search_text, search_query)
 	else:
-		spans = exact_fragment_spans(search_text, search_query)
+		spans = literal_spans(search_text, search_query)
 
 	word_pending = path.suffix.lower() == ".docx"
 	for start, end in spans:
-		if start < 0 or start >= len(text):
-			continue
-		end = min(end, len(text))
 		line, column = line_column_for_offset(text, start)
 		page = extracted.page_for_offset(start) if options.report_page_numbers else None
 		yield SearchResult(path=path, line=line, column=column, preview=preview_for_span(text, start, end), page=page, location_unit=location_unit_for_path(path), start=start, end=end, word_pending=word_pending)
@@ -245,14 +207,6 @@ def location_unit_for_path(path: Path) -> str:
 	if path.suffix.lower() in {".docx", ".odt"}:
 		return "Open Result"
 	return "Line"
-
-
-def position_preserving_lower(text: str) -> str:
-	parts = []
-	for character in text:
-		lowered = character.lower()
-		parts.append(lowered if len(lowered) == 1 else character)
-	return "".join(parts)
 
 
 def exact_whole_word_spans(text: str, query: str):
@@ -277,52 +231,6 @@ def literal_spans(text: str, query: str):
 			return
 		yield index, index + len(query)
 		start = index + max(len(query), 1)
-
-
-def exact_fragment_spans(text: str, query: str):
-	seen = set()
-	for span in literal_spans(text, query):
-		seen.add(span)
-		yield span
-	if not should_use_flexible_fragment_search(query):
-		return
-	for span in flexible_fragment_spans(text, query):
-		if span not in seen:
-			seen.add(span)
-			yield span
-
-
-def should_use_flexible_fragment_search(query: str) -> bool:
-	query = query.strip()
-	return query.isalnum() and len(query) <= 20
-
-
-def flexible_fragment_spans(text: str, query: str):
-	query_characters = [character for character in query if character.isalnum()]
-	if not query_characters:
-		return
-	first = query_characters[0]
-	index = 0
-	while True:
-		start = text.find(first, index)
-		if start == -1:
-			return
-		text_index = start + 1
-		query_index = 1
-		while query_index < len(query_characters):
-			while text_index < len(text) and is_fragment_joiner(text[text_index]):
-				text_index += 1
-			if text_index >= len(text) or text[text_index] != query_characters[query_index]:
-				break
-			text_index += 1
-			query_index += 1
-		if query_index == len(query_characters):
-			yield start, text_index
-		index = start + 1
-
-
-def is_fragment_joiner(character: str) -> bool:
-	return bool(character) and not character.isalnum()
 
 
 def line_column_for_offset(text: str, offset: int) -> tuple[int, int]:
@@ -356,9 +264,6 @@ def sentence_excerpt_for_span(text: str, start: int, end: int) -> str | None:
 
 
 def sentence_bounds_for_offset(text: str, offset: int) -> tuple[int | None, int | None]:
-	if not text:
-		return None, None
-	offset = max(0, min(offset, len(text) - 1))
 	boundary = offset - 1
 	while boundary >= 0 and text[boundary] not in ".!?\r\n":
 		boundary -= 1

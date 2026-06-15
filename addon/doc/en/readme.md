@@ -74,11 +74,11 @@ The search mode, case sensitivity, Include subfolders, and page-number reporting
 
 ## Supported Files
 
-Text Finder searches common files with extractable text, including plain text, source code, markup files, DOCX, RTF, ODT, Excel workbooks (.xlsx), PowerPoint presentations (.pptx), and text-based PDF documents when local PDF text extraction support is available.
+Text Finder searches common files with extractable text, including plain text, source code, markup files, DOCX, RTF, ODT, Excel workbooks (.xlsx), and PowerPoint presentations (.pptx).
 
 Excel and PowerPoint support covers the modern .xlsx and .pptx formats. The older binary .xls and .ppt formats are not searched.
 
-Image-only or scanned PDFs are not OCR'd. Unknown-extension files are not scanned during folder searches; they are only tried when you target that one file, and only if the file sample looks like text rather than binary data.
+PDF files are not included in this Word-first release. Unknown-extension files are not scanned during folder searches; they are only tried when you target that one file, and only if the file sample looks like text rather than binary data.
 
 ## Search Statistics
 

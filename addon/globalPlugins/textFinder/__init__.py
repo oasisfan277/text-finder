@@ -1,5 +1,4 @@
 import os
-import re
 import subprocess
 import json
 import tempfile
@@ -58,7 +57,6 @@ except ModuleNotFoundError:
 
 from .search_engine import SearchOptions, Searcher
 from .text_extractors import (
-	PLAIN_TEXT_EXTENSIONS,
 	SUPPORTED_FILE_TYPES,
 	TextExtractionError,
 	all_supported_extensions,
@@ -73,16 +71,6 @@ except NameError:
 
 
 CONFIG_SECTION = "textFinder"
-AUTO_WORD_LOCATION_RESULT_LIMIT = 50
-PDF_VIEWER_APP_NAMES = {
-	"acrobat",
-	"acrord32",
-	"applicationframehost",
-	"chrome",
-	"firefox",
-	"msedge",
-	"sumatrapdf",
-}
 
 
 def _initialize_config():
@@ -93,10 +81,9 @@ def _initialize_config():
 		"announceInvisibleCharacters": "boolean(default=False)",
 		"reportPageNumbers": "boolean(default=True)",
 		"showFullPath": "boolean(default=False)",
-		"closeAfterGoToResult": "boolean(default=False)",
 		"searchWholeWord": "boolean(default=False)",
 		"searchCaseSensitive": "boolean(default=False)",
-		"searchIncludeSubfolders": "boolean(default=True)",
+		"searchIncludeSubfolders": "boolean(default=False)",
 		"searchAllFileTypes": "boolean(default=True)",
 		"searchFileTypes": "string(default='')",
 	}
@@ -107,10 +94,9 @@ SETTING_DEFAULTS = {
 	"announceInvisibleCharacters": False,
 	"reportPageNumbers": True,
 	"showFullPath": False,
-	"closeAfterGoToResult": False,
 	"searchWholeWord": False,
 	"searchCaseSensitive": False,
-	"searchIncludeSubfolders": True,
+	"searchIncludeSubfolders": False,
 	"searchAllFileTypes": True,
 	"searchFileTypes": "",
 }
@@ -143,41 +129,6 @@ def get_active_file_patterns():
 			selected = all_supported_extensions()
 	return tuple("*{ext}".format(ext=ext) for ext in selected)
 
-
-def get_folder_file_patterns():
-	return get_active_file_patterns()
-
-
-def folder_file_types_summary():
-	return active_file_types_summary()
-
-
-def pdf_is_searched():
-	# Detecting an open PDF at launch runs several PowerShell scans, which slows
-	# down every Text Finder launch. Only do that work when PDF is actually one
-	# of the file types being searched, so launching stays fast when PDFs are not
-	# in scope. Mirrors the fallback-to-all-types rule in get_active_file_patterns.
-	if get_setting("searchAllFileTypes"):
-		return False
-	selected = parse_extension_list(get_setting("searchFileTypes"))
-	if not selected:
-		return True
-	return ".pdf" in selected
-
-
-def active_file_types_summary():
-	if get_setting("searchAllFileTypes"):
-		return _("All supported file types")
-	selected = set(parse_extension_list(get_setting("searchFileTypes")))
-	if not selected:
-		return _("All supported file types")
-	labels = []
-	for label, extensions in SUPPORTED_FILE_TYPES:
-		if any(extension in selected for extension in extensions):
-			labels.append(label)
-	if not labels:
-		return _("All supported file types")
-	return ", ".join(labels)
 
 
 def file_type_is_selected(search_all, selected_extensions, extensions):
@@ -318,10 +269,6 @@ class TextFinderSettingsPanel(SettingsPanel):
 			wx.CheckBox(self, label=_("Show the full file path in search results"))
 		)
 		self.showFullPathCtrl.SetValue(get_setting("showFullPath"))
-		self.closeAfterGoToResultCtrl = settingsSizerHelper.addItem(
-			wx.CheckBox(self, label=_("Close Text Finder automatically after Go to Search Result"))
-		)
-		self.closeAfterGoToResultCtrl.SetValue(get_setting("closeAfterGoToResult"))
 
 		self.searchAllFileTypesCtrl = settingsSizerHelper.addItem(
 			wx.CheckBox(self, label=_("Search all supported file types"))
@@ -367,7 +314,6 @@ class TextFinderSettingsPanel(SettingsPanel):
 		config.conf[CONFIG_SECTION]["announceInvisibleCharacters"] = self.announceInvisibleCharactersCtrl.GetValue()
 		config.conf[CONFIG_SECTION]["reportPageNumbers"] = self.reportPageNumbersCtrl.GetValue()
 		config.conf[CONFIG_SECTION]["showFullPath"] = self.showFullPathCtrl.GetValue()
-		config.conf[CONFIG_SECTION]["closeAfterGoToResult"] = self.closeAfterGoToResultCtrl.GetValue()
 		config.conf[CONFIG_SECTION]["searchAllFileTypes"] = self.searchAllFileTypesCtrl.GetValue()
 		chosen_extensions = []
 		for index, (_label, extensions) in enumerate(self.fileTypeChoices):
@@ -376,10 +322,10 @@ class TextFinderSettingsPanel(SettingsPanel):
 		config.conf[CONFIG_SECTION]["searchFileTypes"] = ";".join(chosen_extensions)
 
 def get_current_search_target():
-	target = get_open_document_target()
+	target = get_target_from_focused_object()
 	if target:
 		return target
-	target = get_target_from_focused_object()
+	target = get_open_document_target()
 	if target:
 		return target
 	return get_foreground_explorer_target_from_shell()
@@ -399,10 +345,7 @@ def get_target_from_focused_object():
 			while obj and id(obj) not in seen:
 				seen.add(id(obj))
 				for attr in ("location", "value", "name"):
-					value = getattr(obj, attr, None)
-					target = normalize_search_target(value)
-					if not target:
-						target = document_path_from_text(value, all_supported_extensions())
+					target = normalize_search_target(getattr(obj, attr, None))
 					if target:
 						return target
 				obj = getattr(obj, "parent", None)
@@ -503,14 +446,6 @@ def normalize_search_folder(candidate):
 
 def get_open_document_target():
 	app_name = get_foreground_app_name()
-	if app_name == "notepad":
-		target = get_notepad_active_document_target()
-		if target:
-			return target
-	if app_name in PDF_VIEWER_APP_NAMES and pdf_is_searched():
-		target = get_open_pdf_document_target()
-		if target:
-			return target
 	if app_name in {"winword", "word"}:
 		target = get_open_word_document_target_from_nvda()
 		if target:
@@ -532,10 +467,6 @@ def get_open_document_target():
 		target = get_office_active_document_target(office_app)
 		if target:
 			return target
-	if pdf_is_searched():
-		target = get_open_pdf_document_target()
-		if target:
-			return target
 	return None
 
 
@@ -554,332 +485,13 @@ def get_foreground_app_name():
 
 
 def get_open_word_document_target_from_nvda():
-	document_name = get_foreground_document_file_name({"winword", "word"}, (".docx", ".docm", ".doc", ".rtf"))
+	document_name = get_foreground_document_file_name({"winword", "word"})
 	if not document_name:
 		return None
 	return find_matching_file_in_shell_windows(document_name)
 
 
-def get_notepad_active_document_target():
-	process_id = get_foreground_process_id()
-	if process_id:
-		target = document_from_command_line(get_process_command_line(process_id), tuple(PLAIN_TEXT_EXTENSIONS | {".html", ".htm", ".rtf"}))
-		if target:
-			return target
-	document_name = get_foreground_document_file_name({"notepad"}, tuple(PLAIN_TEXT_EXTENSIONS | {".html", ".htm", ".rtf"}))
-	if document_name:
-		return find_matching_file_in_shell_windows(document_name)
-	return None
-
-
-def get_open_pdf_document_target():
-	process_id = get_foreground_process_id()
-	if process_id:
-		target = document_from_command_line(get_process_command_line(process_id), (".pdf",))
-		if target:
-			return target
-	target = get_open_pdf_document_from_foreground_ui()
-	if target:
-		return target
-	document_name = get_foreground_document_file_name(PDF_VIEWER_APP_NAMES, (".pdf",))
-	if document_name:
-		target = normalize_search_target(document_name)
-		if target:
-			return target
-		return find_matching_file_in_shell_windows(document_name)
-	document_title = get_foreground_document_title(PDF_VIEWER_APP_NAMES)
-	if document_title:
-		target = find_matching_pdf_by_title(document_title)
-		if target:
-			return target
-	target = get_recent_pdf_document_target()
-	if target:
-		return target
-	target = get_open_pdf_document_from_running_processes()
-	if target:
-		return target
-	return None
-
-
-def get_open_pdf_document_from_foreground_ui():
-	try:
-		completed = subprocess.run(
-			[
-				powershell_executables()[0],
-				"-NoProfile",
-				"-ExecutionPolicy",
-				"Bypass",
-				"-Command",
-				PDF_FOREGROUND_UI_SCAN_SCRIPT,
-			],
-			capture_output=True,
-			text=True,
-			timeout=4,
-			creationflags=get_hidden_process_flags(),
-		)
-		if completed.returncode != 0 or not completed.stdout.strip():
-			return None
-		items = json.loads(completed.stdout)
-		if isinstance(items, str):
-			items = [items]
-		for item in items:
-			target = document_path_from_text(item, (".pdf",))
-			if target:
-				return target
-	except Exception:
-		log_exception("Text Finder could not scan the foreground window for an open PDF file.")
-	return None
-
-
-PDF_FOREGROUND_UI_SCAN_SCRIPT = r'''
-Add-Type -AssemblyName UIAutomationClient
-Add-Type -AssemblyName UIAutomationTypes
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public static class TextFinderWin32 {
-	[DllImport("user32.dll")]
-	public static extern IntPtr GetForegroundWindow();
-}
-"@
-$hwnd = [TextFinderWin32]::GetForegroundWindow()
-if ($hwnd -eq [IntPtr]::Zero) {
-	return
-}
-$root = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
-if (-not $root) {
-	return
-}
-$condition = [System.Windows.Automation.Condition]::TrueCondition
-$elements = @($root) + @($root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition))
-$values = New-Object System.Collections.Generic.List[string]
-$limit = [Math]::Min($elements.Count, 800)
-for ($index = 0; $index -lt $limit; $index++) {
-	$element = $elements[$index]
-	if (-not $element) {
-		continue
-	}
-	try {
-		if ($element.Current.Name) {
-			$values.Add($element.Current.Name)
-		}
-	} catch {
-	}
-	try {
-		$pattern = $null
-		if ($element.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$pattern) -and $pattern.Current.Value) {
-			$values.Add($pattern.Current.Value)
-		}
-	} catch {
-	}
-	try {
-		$legacy = $null
-		if ($element.TryGetCurrentPattern([System.Windows.Automation.LegacyIAccessiblePattern]::Pattern, [ref]$legacy)) {
-			if ($legacy.Current.Name) {
-				$values.Add($legacy.Current.Name)
-			}
-			if ($legacy.Current.Value) {
-				$values.Add($legacy.Current.Value)
-			}
-		}
-	} catch {
-	}
-}
-$values | Where-Object { $_ -match '(?i)(\.pdf|file:///)'} | Select-Object -Unique | ConvertTo-Json -Compress
-'''
-
-
-def get_foreground_process_id():
-	try:
-		import ctypes
-
-		hwnd = ctypes.windll.user32.GetForegroundWindow()
-		process_id = ctypes.c_ulong()
-		ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
-		return process_id.value
-	except Exception:
-		return None
-
-
-def get_process_command_line(process_id):
-	if not process_id:
-		return ""
-	try:
-		completed = subprocess.run(
-			[
-				powershell_executables()[0],
-				"-NoProfile",
-				"-ExecutionPolicy",
-				"Bypass",
-				"-Command",
-				"(Get-CimInstance Win32_Process -Filter \"ProcessId = {process_id}\").CommandLine".format(process_id=int(process_id)),
-			],
-			capture_output=True,
-			text=True,
-			timeout=3,
-			creationflags=get_hidden_process_flags(),
-		)
-		if completed.returncode == 0:
-			return completed.stdout.strip()
-	except Exception:
-		log_exception("Text Finder could not read the foreground process command line.")
-	return ""
-
-
-def notepad_document_from_command_line(command_line):
-	return document_from_command_line(command_line, tuple(PLAIN_TEXT_EXTENSIONS | {".html", ".htm", ".rtf"}))
-
-
-def document_from_command_line(command_line, suffixes):
-	target = document_path_from_text(command_line, suffixes)
-	if target:
-		return target
-	for argument in split_windows_command_line(command_line)[1:]:
-		if argument.startswith(("/", "-")):
-			continue
-		target = normalize_search_target(argument)
-		if target and Path(target).suffix.lower() in suffixes:
-			return target
-	return None
-
-
-def get_recent_pdf_document_target():
-	try:
-		completed = subprocess.run(
-			[
-				powershell_executables()[0],
-				"-NoProfile",
-				"-ExecutionPolicy",
-				"Bypass",
-				"-Command",
-				RECENT_PDF_SCRIPT,
-			],
-			capture_output=True,
-			text=True,
-			timeout=4,
-			creationflags=get_hidden_process_flags(),
-		)
-		if completed.returncode == 0 and completed.stdout.strip():
-			return normalize_search_target(completed.stdout.strip())
-	except Exception:
-		log_exception("Text Finder could not inspect recent PDF documents.")
-	return None
-
-
-RECENT_PDF_SCRIPT = r'''
-$recent = [Environment]::GetFolderPath('Recent')
-if (-not $recent) {
-	return
-}
-$shell = New-Object -ComObject WScript.Shell
-Get-ChildItem -Path $recent -Filter '*.lnk' -ErrorAction SilentlyContinue |
-	Sort-Object LastWriteTime -Descending |
-	Select-Object -First 40 |
-	ForEach-Object {
-		try {
-			$shortcut = $shell.CreateShortcut($_.FullName)
-			$target = $shortcut.TargetPath
-			if ($target -and $target.EndsWith('.pdf', [StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $target)) {
-				$target
-				break
-			}
-		} catch {
-		}
-	}
-'''
-
-
-def get_open_pdf_document_from_running_processes():
-	try:
-		completed = subprocess.run(
-			[
-				powershell_executables()[0],
-				"-NoProfile",
-				"-ExecutionPolicy",
-				"Bypass",
-				"-Command",
-				OPEN_PDF_PROCESS_SCAN_SCRIPT,
-			],
-			capture_output=True,
-			text=True,
-			timeout=4,
-			creationflags=get_hidden_process_flags(),
-		)
-		if completed.returncode != 0 or not completed.stdout.strip():
-			return None
-		items = json.loads(completed.stdout)
-		if isinstance(items, dict):
-			items = [items]
-		candidates = []
-		for item in items:
-			command_line = item.get("CommandLine", "") if isinstance(item, dict) else ""
-			target = document_from_command_line(command_line, (".pdf",))
-			if target and target not in candidates:
-				candidates.append(target)
-		if len(candidates) == 1:
-			return candidates[0]
-	except Exception:
-		log_exception("Text Finder could not scan running processes for open PDF files.")
-	return None
-
-
-OPEN_PDF_PROCESS_SCAN_SCRIPT = r'''
-$names = @('Acrobat.exe', 'AcroRd32.exe', 'ApplicationFrameHost.exe', 'chrome.exe', 'firefox.exe', 'msedge.exe', 'SumatraPDF.exe')
-Get-CimInstance Win32_Process |
-	Where-Object { $names -contains $_.Name -and $_.CommandLine -and $_.CommandLine -match '(?i)(\.pdf|file:///)'} |
-	Sort-Object CreationDate -Descending |
-	Select-Object -Property ProcessId,Name,CommandLine |
-	ConvertTo-Json -Compress
-'''
-
-
-def document_path_from_text(text, suffixes):
-	if not text:
-		return None
-	value = str(text).strip()
-	for suffix in suffixes:
-		target = document_path_with_suffix_from_text(value, suffix)
-		if target:
-			return target
-	return None
-
-
-def document_path_with_suffix_from_text(text, suffix):
-	suffix = re.escape(suffix)
-	patterns = (
-		r"file:///[^\s\"']+" + suffix + r"(?:[#?][^\s\"']*)?",
-		r"[A-Za-z]:\\[^\r\n\"<>|?*]+" + suffix,
-	)
-	for pattern in patterns:
-		for match in re.finditer(pattern, text, flags=re.IGNORECASE):
-			candidate = normalize_search_target(match.group(0))
-			if candidate:
-				return candidate
-	return None
-
-
-def split_windows_command_line(command_line):
-	if not command_line:
-		return []
-	try:
-		import ctypes
-
-		argc = ctypes.c_int()
-		command_line_to_argv = ctypes.windll.shell32.CommandLineToArgvW
-		command_line_to_argv.argtypes = [ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_int)]
-		command_line_to_argv.restype = ctypes.POINTER(ctypes.c_wchar_p)
-		argv = command_line_to_argv(command_line, ctypes.byref(argc))
-		if not argv:
-			return []
-		try:
-			return [argv[index] for index in range(argc.value)]
-		finally:
-			ctypes.windll.kernel32.LocalFree(argv)
-	except Exception:
-		return [part.strip('"') for part in command_line.split()]
-
-
-def get_foreground_document_file_name(app_names, suffixes):
+def get_foreground_document_file_name(app_names):
 	try:
 		import api
 
@@ -891,7 +503,7 @@ def get_foreground_document_file_name(app_names, suffixes):
 				app_module = getattr(current, "appModule", None)
 				app_name = str(getattr(app_module, "appName", "") or "").lower()
 				if app_name in app_names:
-					name = document_file_name_from_object_name(getattr(current, "name", None), suffixes)
+					name = word_file_name_from_object_name(getattr(current, "name", None))
 					if name:
 						return name
 				current = getattr(current, "parent", None)
@@ -900,132 +512,17 @@ def get_foreground_document_file_name(app_names, suffixes):
 	return None
 
 
-def get_foreground_document_title(app_names):
-	try:
-		import api
-
-		for obj in (api.getFocusObject(), api.getForegroundObject(), api.getNavigatorObject()):
-			current = obj
-			seen = set()
-			while current and id(current) not in seen:
-				seen.add(id(current))
-				app_module = getattr(current, "appModule", None)
-				app_name = str(getattr(app_module, "appName", "") or "").lower()
-				if app_name in app_names:
-					title = document_title_from_object_name(getattr(current, "name", None))
-					if title:
-						return title
-				current = getattr(current, "parent", None)
-	except Exception:
-		pass
-	return None
-
-
 def word_file_name_from_object_name(name):
-	return document_file_name_from_object_name(name, (".docx", ".docm", ".doc", ".rtf"))
-
-
-def document_file_name_from_object_name(name, suffixes):
 	if not name:
 		return None
 	name = str(name).strip()
 	if name.endswith(" - Word"):
 		name = name[:-7].strip()
-	if name.endswith(" - Notepad"):
-		name = name[:-10].strip()
-	if name.startswith("*"):
-		name = name[1:].strip()
-	for suffix in suffixes:
+	for suffix in (".docx", ".docm", ".doc", ".rtf"):
 		index = name.lower().find(suffix)
 		if index >= 0:
 			return name[: index + len(suffix)]
 	return None
-
-
-def document_title_from_object_name(name):
-	if not name:
-		return None
-	title = str(name).strip()
-	for suffix in (" - Google Chrome", " - Microsoft Edge", " - Mozilla Firefox", " - Adobe Acrobat", " - Adobe Reader", " - SumatraPDF"):
-		if title.endswith(suffix):
-			title = title[: -len(suffix)].strip()
-	if title.startswith("*"):
-		title = title[1:].strip()
-	if title.lower().endswith(".pdf"):
-		title = title[:-4].strip()
-	if not title or title.lower() in {"google chrome", "microsoft edge", "mozilla firefox", "new tab"}:
-		return None
-	return title
-
-
-def find_matching_pdf_by_title(title):
-	normalized_title = normalize_match_text(title)
-	if not normalized_title:
-		return None
-	candidates = []
-	for root in pdf_search_roots():
-		if not root or not root.exists():
-			continue
-		try:
-			paths = root.rglob("*.pdf") if root.is_dir() else [root]
-			for path in paths:
-				if not path.is_file():
-					continue
-				stem = normalize_match_text(path.stem)
-				if stem == normalized_title or normalized_title in stem or stem in normalized_title:
-					if path not in candidates:
-						candidates.append(path)
-				if len(candidates) > 1:
-					break
-		except Exception:
-			continue
-		if len(candidates) > 1:
-			break
-	if len(candidates) == 1:
-		return str(candidates[0])
-	return None
-
-
-def pdf_search_roots():
-	roots = []
-	for path in foreground_shell_roots():
-		if path and path not in roots:
-			roots.append(path)
-	home = Path.home()
-	onedrive = os.environ.get("OneDrive")
-	known_roots = []
-	if onedrive:
-		known_roots.append(Path(onedrive))
-	known_roots.extend([home / "OneDrive" / "Documents", home / "Documents"])
-	for path in known_roots:
-		if path and path not in roots:
-			roots.append(path)
-	return roots
-
-
-def foreground_shell_roots():
-	roots = []
-	try:
-		shell = get_shell_application()
-		for window in shell.Windows():
-			try:
-				target = get_selected_target_from_shell_window(window) or normalize_search_target(window.LocationURL)
-				if target:
-					path = Path(target)
-					root = path if path.is_dir() else path.parent
-					if root not in roots:
-						roots.append(root)
-			except Exception:
-				continue
-	except Exception:
-		pass
-	return roots
-
-
-def normalize_match_text(text):
-	text = str(text).casefold()
-	text = re.sub(r"[^0-9a-z\u00c0-\u024f]+", " ", text)
-	return " ".join(text.split())
 
 
 def find_matching_file_in_shell_windows(file_name):
@@ -1176,11 +673,6 @@ def log_search_issue_details(statistics):
 			log_info("Text Finder search %s file: %s; reason: %s", label, path, reason)
 
 
-def should_auto_enrich_word_locations(results):
-	docx_count = sum(1 for result in results if result.path.suffix.lower() == ".docx")
-	return 0 < docx_count <= AUTO_WORD_LOCATION_RESULT_LIMIT
-
-
 class TextFinderDialog(wx.Dialog):
 	def __init__(self, parent, target):
 		super().__init__(parent, title=_("Text Finder"))
@@ -1190,16 +682,8 @@ class TextFinderDialog(wx.Dialog):
 		self.statistics = None
 		self._lastQueryValue = ""
 		self._search_generation = 0
-		self._closed = False
-		self._cancel_search = threading.Event()
-		self._more_info_running = False
-		self._word_info_indices = []
-		self._word_info_next_position = 0
 		self._build()
 		self.CentreOnScreen()
-
-	def is_file_search(self):
-		return Path(self.target).is_file()
 
 	def present(self):
 		self.Show()
@@ -1210,10 +694,8 @@ class TextFinderDialog(wx.Dialog):
 		log_info("Text Finder dialog presented for target: %s", self.folder)
 
 	def _build(self):
-		file_search = self.is_file_search()
 		mainSizer = wx.BoxSizer(wx.VERTICAL)
 		mainSizer.Add(wx.StaticText(self, label=_("Search target: {target}").format(target=self.target)), 0, wx.ALL, 8)
-		mainSizer.Add(wx.StaticText(self, label=_("File types: {file_types}").format(file_types=active_file_types_summary())), 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
 		mainSizer.Add(wx.StaticText(self, label=_("Search &text:")), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		self.queryCtrl = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_PROCESS_ENTER)
@@ -1239,10 +721,7 @@ class TextFinderDialog(wx.Dialog):
 
 		mainSizer.Add(searchModeSizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		mainSizer.Add(self.caseCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
-		if file_search:
-			self.subfoldersCtrl.Hide()
-		else:
-			mainSizer.Add(self.subfoldersCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+		mainSizer.Add(self.subfoldersCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		mainSizer.Add(self.reportPagesCtrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		# File types to search are chosen in the NVDA settings panel, not here.
 
@@ -1254,22 +733,10 @@ class TextFinderDialog(wx.Dialog):
 		self.searchButton = wx.Button(self, label=_("&Search"))
 		self.openFileButton = wx.Button(self, label=_("Open Fi&le"))
 		self.goToResultButton = wx.Button(self, label=_("&Go to Search Result"))
-		self.moreInfoButton = wx.Button(self, label=_("&More Word Info"))
 		self.openButton = wx.Button(self, label=_("&Open Result"))
 		self.statsButton = wx.Button(self, label=_("Search Stat&istics"))
-		self.closeButton = wx.Button(self, wx.ID_CANCEL, _("Close"))
-		buttons = [self.searchButton]
-		buttons.append(self.goToResultButton)
-		buttons.append(self.moreInfoButton)
-		if file_search:
-			self.openFileButton.Hide()
-			self.openButton.Hide()
-			self.statsButton.Hide()
-		else:
-			buttons.extend([self.openFileButton, self.openButton])
-			buttons.append(self.statsButton)
-		buttons.append(self.closeButton)
-		for button in buttons:
+		self.closeButton = wx.Button(self, wx.ID_CLOSE)
+		for button in (self.searchButton, self.openFileButton, self.goToResultButton, self.openButton, self.statsButton, self.closeButton):
 			buttonSizer.Add(button, 0, wx.ALL, 4)
 		mainSizer.Add(buttonSizer, 0, wx.ALIGN_RIGHT | wx.ALL, 4)
 
@@ -1279,18 +746,13 @@ class TextFinderDialog(wx.Dialog):
 		self.searchButton.Bind(wx.EVT_BUTTON, self.on_search)
 		self.openFileButton.Bind(wx.EVT_BUTTON, self.on_open_file_from_result)
 		self.goToResultButton.Bind(wx.EVT_BUTTON, self.on_go_to_result)
-		self.moreInfoButton.Bind(wx.EVT_BUTTON, self.on_get_more_info)
 		self.openButton.Bind(wx.EVT_BUTTON, self.on_open_result)
 		self.statsButton.Bind(wx.EVT_BUTTON, self.on_statistics)
-		self.closeButton.Bind(wx.EVT_BUTTON, self.on_close)
+		self.closeButton.Bind(wx.EVT_BUTTON, lambda evt: self.Destroy())
 		self.Bind(wx.EVT_CHAR_HOOK, self.on_dialog_char_hook)
-		self.Bind(wx.EVT_MENU, self.on_close, id=wx.ID_CANCEL)
-		self.Bind(wx.EVT_CLOSE, self.on_close)
-		self.SetEscapeId(wx.ID_CANCEL)
-		self.SetAcceleratorTable(wx.AcceleratorTable([(wx.ACCEL_NORMAL, wx.WXK_ESCAPE, wx.ID_CANCEL)]))
 		self.queryCtrl.Bind(wx.EVT_CHAR_HOOK, self.on_query_char_hook)
 		self.queryCtrl.Bind(wx.EVT_TEXT, self.on_query_text)
-		self.resultsCtrl.Bind(wx.EVT_LISTBOX_DCLICK, self.on_activate_result)
+		self.resultsCtrl.Bind(wx.EVT_LISTBOX_DCLICK, self.on_open_result)
 		self.resultsCtrl.Bind(wx.EVT_CHAR_HOOK, self.on_results_char_hook)
 
 	def on_search(self, evt):
@@ -1298,24 +760,18 @@ class TextFinderDialog(wx.Dialog):
 		if not query:
 			ui.message(_("Enter text to search for."))
 			return
-		file_search = self.is_file_search()
 		self.searchButton.Disable()
 		self.resultsCtrl.Clear()
-		self._cancel_search.clear()
-		self._word_info_indices = []
-		self._word_info_next_position = 0
-		file_patterns = get_active_file_patterns() if file_search else get_folder_file_patterns()
-		file_types_summary = active_file_types_summary() if file_search else folder_file_types_summary()
-		ui.message(_("Searching {file_types}.").format(file_types=file_types_summary))
+		ui.message(_("Searching."))
 		options = SearchOptions(
 			query=query,
 			whole_word=self.exactWholeWordCtrl.GetValue(),
 			case_sensitive=self.caseCtrl.GetValue(),
-			include_subfolders=False if file_search else self.subfoldersCtrl.GetValue(),
-			file_patterns=file_patterns,
+			include_subfolders=self.subfoldersCtrl.GetValue(),
+			file_patterns=get_active_file_patterns(),
 			report_page_numbers=self.reportPagesCtrl.GetValue(),
 		)
-		self._save_search_options(options, save_include_subfolders=not file_search)
+		self._save_search_options(options)
 		log_info(
 			"Text Finder search started. mode=%s case_sensitive=%s include_subfolders=%s filter_count=%d query_length=%d report_pages=%s",
 			"whole word" if options.whole_word else "fragment",
@@ -1328,18 +784,10 @@ class TextFinderDialog(wx.Dialog):
 		thread = threading.Thread(target=self._run_search, args=(options,), daemon=True)
 		thread.start()
 
-	def on_close(self, evt):
-		if self._closed:
-			return
-		self._closed = True
-		self._cancel_search.set()
-		self.Destroy()
-
-	def _save_search_options(self, options, save_include_subfolders=True):
+	def _save_search_options(self, options):
 		set_setting("searchWholeWord", options.whole_word)
 		set_setting("searchCaseSensitive", options.case_sensitive)
-		if save_include_subfolders:
-			set_setting("searchIncludeSubfolders", options.include_subfolders)
+		set_setting("searchIncludeSubfolders", options.include_subfolders)
 		set_setting("reportPageNumbers", options.report_page_numbers)
 		save_config()
 
@@ -1385,22 +833,13 @@ class TextFinderDialog(wx.Dialog):
 
 	def _run_search(self, options):
 		searcher = Searcher(self.target, options)
-		results, statistics = searcher.search(self._cancel_search.is_set)
-		if not self._cancel_search.is_set() and not self._closed:
-			wx.CallAfter(self._finish_search, results, statistics)
+		results, statistics = searcher.search()
+		wx.CallAfter(self._finish_search, results, statistics)
 
 	def _finish_search(self, results, statistics):
-		if self._closed:
-			return
 		self.results = results
 		self.statistics = statistics
 		self._search_generation += 1
-		self._word_info_indices = [
-			index
-			for index, result in enumerate(results)
-			if result.path.suffix.lower() == ".docx"
-		]
-		self._word_info_next_position = 0
 		self.refresh_results_list()
 		self.searchButton.Enable()
 		has_docx = self._has_docx_results(results)
@@ -1428,46 +867,21 @@ class TextFinderDialog(wx.Dialog):
 			self.resultsCtrl.SetFocus()
 		ui.message(statistics.summary_message())
 		if has_docx:
-			self.set_word_pending_for_indices(self._word_info_indices, False)
-			self.start_next_word_info_batch(auto=True)
+			self.start_word_location_enrichment(results, self._search_generation)
 
 	def _has_docx_results(self, results):
 		return any(result.path.suffix.lower() == ".docx" for result in results)
 
-	def clear_word_pending_for_results(self, results, generation):
-		docx_indices = [
-			index
-			for index, result in enumerate(results)
-			if result.path.suffix.lower() == ".docx" and result.word_pending
-		]
-		if not docx_indices:
-			return
-		self.clear_word_pending(generation, docx_indices)
-		ui.message(
-			_(
-				"Word page and visual line lookup skipped for {count} results to keep NVDA responsive. Use Go to Search Result on one result when needed."
-			).format(count=len(docx_indices))
-		)
-
-	def start_word_location_enrichment(self, results, generation, result_indices=None):
-		if result_indices is None:
-			result_indices = [
-				index
-				for index, result in enumerate(results)
-				if result.path.suffix.lower() == ".docx"
-			]
-		docx_count = len(result_indices)
+	def start_word_location_enrichment(self, results, generation):
+		docx_count = sum(1 for result in results if result.path.suffix.lower() == ".docx")
 		log_info("Text Finder getting Word locations for %d DOCX results in the background.", docx_count)
-		self.set_word_pending_for_indices(result_indices, True)
-		thread = threading.Thread(target=self.enrich_word_locations, args=(results, generation, list(result_indices)), daemon=True)
+		ui.message(_("Getting Word page and visual line numbers in the background."))
+		thread = threading.Thread(target=self.enrich_word_locations, args=(results, generation), daemon=True)
 		thread.start()
 
-	def enrich_word_locations(self, original_results, generation, result_indices=None):
-		if result_indices is None:
-			result_indices = list(range(len(original_results)))
+	def enrich_word_locations(self, original_results, generation):
 		indices_by_path = {}
-		for index in result_indices:
-			result = original_results[index]
+		for index, result in enumerate(original_results):
 			if result.path.suffix.lower() == ".docx":
 				indices_by_path.setdefault(result.path, []).append(index)
 		docx_count = sum(len(indices) for indices in indices_by_path.values())
@@ -1514,7 +928,7 @@ class TextFinderDialog(wx.Dialog):
 					log_exception("Text Finder could not close the hidden Word application.")
 			uninitialize_com()
 		log_info("Text Finder Word location lookup finished. updated=%d of docx=%d", updated_total, docx_count)
-		wx.CallAfter(self.finish_word_info_batch, generation, updated_total, docx_count)
+		wx.CallAfter(self.announce_word_enrichment_done, generation, updated_total, docx_count)
 
 	def apply_word_locations(self, generation, updates, cleared):
 		if generation != self._search_generation:
@@ -1534,12 +948,6 @@ class TextFinderDialog(wx.Dialog):
 		for result_index in indices:
 			if 0 <= result_index < len(self.results) and self.results[result_index].word_pending:
 				self.results[result_index] = replace(self.results[result_index], word_pending=False)
-				self.resultsCtrl.SetString(result_index, format_result_for_list(self.results[result_index]))
-
-	def set_word_pending_for_indices(self, indices, pending):
-		for result_index in indices:
-			if 0 <= result_index < len(self.results):
-				self.results[result_index] = replace(self.results[result_index], word_pending=pending)
 				self.resultsCtrl.SetString(result_index, format_result_for_list(self.results[result_index]))
 
 	def announce_word_enrichment_done(self, generation, updated_total, docx_count):
@@ -1566,20 +974,11 @@ class TextFinderDialog(wx.Dialog):
 			self.Destroy()
 			return
 		if key_code in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
-			self.activate_selected_result()
+			self.open_selected_result()
 			return
 		evt.Skip()
 
 	def on_open_result(self, evt):
-		self.open_selected_result()
-
-	def on_activate_result(self, evt):
-		self.activate_selected_result()
-
-	def activate_selected_result(self):
-		if self.is_file_search():
-			self.go_to_selected_result()
-			return
 		self.open_selected_result()
 
 	def open_selected_result(self):
@@ -1609,63 +1008,11 @@ class TextFinderDialog(wx.Dialog):
 			self.refresh_results_list()
 
 	def on_go_to_result(self, evt):
-		self.go_to_selected_result()
-
-	def on_get_more_info(self, evt):
-		self.start_next_word_info_batch(auto=False)
-
-	def start_next_word_info_batch(self, auto=False):
-		if self._more_info_running:
-			if not auto:
-				ui.message(_("Already getting Word page and visual line numbers."))
-			return
-		if self._word_info_next_position >= len(self._word_info_indices):
-			if not auto:
-				ui.message(_("No more Word results need page and visual line lookup."))
-			return
-		batch = self._word_info_indices[
-			self._word_info_next_position:self._word_info_next_position + AUTO_WORD_LOCATION_RESULT_LIMIT
-		]
-		self._word_info_next_position += len(batch)
-		self._more_info_running = True
-		self.moreInfoButton.Disable()
-		remaining = len(self._word_info_indices) - self._word_info_next_position
-		if auto:
-			ui.message(_("Getting Word page and visual line numbers for the first {count} results.").format(count=len(batch)))
-		else:
-			ui.message(_("Getting Word page and visual line numbers for the next {count} results.").format(count=len(batch)))
-		self.start_word_location_enrichment(self.results, self._search_generation, batch)
-		if remaining:
-			log_info("Text Finder has %d DOCX results waiting for More Word Info.", remaining)
-
-	def finish_word_info_batch(self, generation, updated_total, docx_count):
-		self._more_info_running = False
-		if self._closed or generation != self._search_generation:
-			return
-		self.moreInfoButton.Enable()
-		remaining = len(self._word_info_indices) - self._word_info_next_position
-		if remaining:
-			if updated_total:
-				ui.message(_("Word page and visual line numbers are ready for {count} results. {remaining} Word results remain.").format(count=updated_total, remaining=remaining))
-			elif docx_count:
-				ui.message(_("Word page and visual line numbers could not be added for this batch. {remaining} Word results remain.").format(remaining=remaining))
-		else:
-			if updated_total:
-				ui.message(_("Word page and visual line lookup is complete."))
-			elif docx_count:
-				ui.message(_("Word page and visual line numbers could not be added. Use Open File on one result to test Word directly."))
-
-	def go_to_selected_result(self):
 		result = self.get_selected_result()
 		if result is None:
 			return
 		if result.path.suffix.lower() != ".docx":
-			updated_result = go_to_non_word_result(result)
-			if updated_result is not None and updated_result != result:
-				index = self.resultsCtrl.GetSelection()
-				self.results[index] = updated_result
-				self.resultsCtrl.SetString(index, format_result_for_list(updated_result))
-			self.close_after_go_to_result_if_enabled(updated_result)
+			ui.message(_("Go to Search Result is available for Word documents."))
 			return
 		try:
 			extracted_text = extract_text(result.path).text
@@ -1678,11 +1025,6 @@ class TextFinderDialog(wx.Dialog):
 			index = self.resultsCtrl.GetSelection()
 			self.results[index] = updated_result
 			self.resultsCtrl.SetString(index, format_result_for_list(updated_result))
-		self.close_after_go_to_result_if_enabled(updated_result)
-
-	def close_after_go_to_result_if_enabled(self, updated_result):
-		if updated_result is not None and get_setting("closeAfterGoToResult"):
-			self.Destroy()
 
 	def get_selected_result(self):
 		index = self.resultsCtrl.GetSelection()
@@ -1984,153 +1326,11 @@ def go_to_word_result(result, extracted_text):
 			ui.message(_("Moved to page {page}, visual line {line}.").format(page=page, line=visual_line))
 			return replace(result, page=page, line=visual_line, column=0, location_unit="Visual line", word_pending=False)
 		ui.message(_("Could not move to this result in the open Word document."))
-		return None
+		return result
 	except Exception:
 		log_exception("Text Finder could not move to the Word result.")
 		ui.message(_("Could not move to this result in Word."))
 		return None
-
-
-def get_more_info_for_word_result(result, extracted_text):
-	try:
-		locations = get_open_word_visual_locations(result.path, [result], extracted_text, select_result=False)
-		if locations is None:
-			locations = get_docx_visual_locations(
-				result.path,
-				[result],
-				extracted_text,
-				visible=False,
-				close_document=True,
-				quit_word=True,
-			)
-		if locations and 0 in locations:
-			page, visual_line = locations[0]
-			return replace(result, page=page, line=visual_line, column=0, location_unit="Visual line", word_pending=False)
-	except Exception:
-		log_exception("Text Finder could not get more information for a Word result.")
-	return None
-
-
-def go_to_non_word_result(result):
-	extension = result.path.suffix.lower()
-	if extension == ".pdf":
-		return go_to_pdf_result(result)
-	if can_open_in_notepad(result.path):
-		return go_to_text_editor_result(result)
-	ui.message(_("Go to Search Result is not available for this file type."))
-	return None
-
-
-def can_open_in_notepad(path):
-	return path.suffix.lower() in PLAIN_TEXT_EXTENSIONS | {".html", ".htm", ".rtf"}
-
-
-def go_to_text_editor_result(result):
-	try:
-		threading.Thread(target=send_notepad_go_to_line, args=(result.path, result.line), daemon=True).start()
-		ui.message(_("Moved in Notepad to line {line}.").format(line=result.line))
-		return result
-	except Exception:
-		log_exception("Text Finder could not open the result in Notepad.")
-		ui.message(_("Could not open this result in Notepad."))
-		return None
-
-
-def send_notepad_go_to_line(path, line):
-	try:
-		script = NOTEPAD_GO_TO_LINE_SCRIPT.replace("__PATH_JSON__", json.dumps(str(path))).replace("__LINE__", str(int(line)))
-		subprocess.run(
-			[
-				powershell_executables()[0],
-				"-NoProfile",
-				"-ExecutionPolicy",
-				"Bypass",
-				"-Command",
-				script,
-			],
-			capture_output=True,
-			text=True,
-			timeout=8,
-			creationflags=get_hidden_process_flags(),
-		)
-	except Exception:
-		log_exception("Text Finder could not send the Notepad go to line command.")
-
-
-NOTEPAD_GO_TO_LINE_SCRIPT = r'''
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName Microsoft.VisualBasic
-$path = @'
-__PATH_JSON__
-'@ | ConvertFrom-Json
-$line = __LINE__
-$fileName = Split-Path -Path $path -Leaf
-$escapedPath = [System.Management.Automation.WildcardPattern]::Escape($path)
-$processInfo = Get-CimInstance Win32_Process -Filter "Name = 'notepad.exe'" -ErrorAction SilentlyContinue |
-	Where-Object { $_.CommandLine -and $_.CommandLine -like "*$escapedPath*" } |
-	Select-Object -First 1
-if ($processInfo) {
-	$process = Get-Process -Id $processInfo.ProcessId -ErrorAction SilentlyContinue
-} else {
-	$process = Get-Process -Name notepad -ErrorAction SilentlyContinue |
-		Where-Object { $_.MainWindowTitle -like "*$fileName*" } |
-		Sort-Object StartTime -Descending |
-		Select-Object -First 1
-}
-if (-not $process) {
-	$process = Start-Process -FilePath "notepad.exe" -ArgumentList @($path) -PassThru
-}
-$deadline = (Get-Date).AddSeconds(5)
-$activated = $false
-do {
-	Start-Sleep -Milliseconds 200
-	try {
-		$process.Refresh()
-		if ($process.MainWindowHandle -ne 0) {
-			[Microsoft.VisualBasic.Interaction]::AppActivate($process.Id) | Out-Null
-			$activated = $true
-			break
-		}
-	} catch {
-	}
-	$candidate = Get-Process -Name notepad -ErrorAction SilentlyContinue |
-		Where-Object { $_.MainWindowTitle -like "*$fileName*" } |
-		Sort-Object StartTime -Descending |
-		Select-Object -First 1
-	if ($candidate) {
-		[Microsoft.VisualBasic.Interaction]::AppActivate($candidate.Id) | Out-Null
-		$activated = $true
-		break
-	}
-} until ((Get-Date) -gt $deadline)
-if (-not $activated) {
-	return
-}
-Start-Sleep -Milliseconds 250
-[System.Windows.Forms.SendKeys]::SendWait("^g")
-Start-Sleep -Milliseconds 250
-[System.Windows.Forms.SendKeys]::SendWait([string]$line)
-[System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
-'''
-
-
-def go_to_pdf_result(result):
-	try:
-		if result.page is not None:
-			os.startfile(pdf_page_uri(result.path, result.page))
-			ui.message(_("Opened PDF at page {page}.").format(page=result.page))
-		else:
-			os.startfile(str(result.path))
-			ui.message(_("Opened PDF. Page information was not available."))
-		return result
-	except Exception:
-		log_exception("Text Finder could not open the PDF result.")
-		ui.message(_("Could not open this PDF result."))
-		return None
-
-
-def pdf_page_uri(path, page):
-	return Path(path).resolve().as_uri() + "#page={page}".format(page=page)
 
 
 def open_docx_result_in_word(result, extracted_text):

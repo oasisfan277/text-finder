@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0
+
+- Reset Text Finder to a Word-first design based on the faster 0.3.13 behavior, with automatic Word page and visual line lookup in results.
+- Removed PDF support from the default add-on path to keep searches fast and predictable.
+
 ## 0.3.33
 
 - Restored PDFs to all-file folder searches while keeping open-PDF detection out of startup.

@@ -36,10 +36,9 @@ Text Finder targets files with extractable text, including:
 - ODT
 - XLSX (modern Excel workbooks)
 - PPTX (modern PowerPoint presentations)
-- Text-based PDF files when a local PDF text extraction library is available
 - A specifically selected unknown-extension file if a small sample looks like plain text
 
-Excel and PowerPoint support covers the modern .xlsx and .pptx formats. The older binary .xls and .ppt formats are not searched. Image-only or scanned PDFs are not OCR'd. Unknown-extension files are not scanned during folder searches; they are only tried when you target that one file, and only if the file sample looks like text rather than binary data.
+Excel and PowerPoint support covers the modern .xlsx and .pptx formats. The older binary .xls and .ppt formats are not searched. PDF files are not included in this Word-first release. Unknown-extension files are not scanned during folder searches; they are only tried when you target that one file, and only if the file sample looks like text rather than binary data.
 
 ## Search Modes
 

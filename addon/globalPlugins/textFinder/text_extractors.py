@@ -5,7 +5,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import zipfile
 from dataclasses import dataclass
@@ -48,7 +47,6 @@ SUPPORTED_FILE_TYPES = (
 	("OpenDocument text (.odt)", (".odt",)),
 	("Excel workbooks (.xlsx)", (".xlsx",)),
 	("PowerPoint presentations (.pptx)", (".pptx",)),
-	("PDF documents (.pdf)", (".pdf",)),
 )
 
 
@@ -94,8 +92,6 @@ def extract_text(path: Path, allow_text_fallback: bool = False) -> ExtractedText
 		return extract_xlsx(path)
 	if extension == ".pptx":
 		return extract_pptx(path)
-	if extension == ".pdf":
-		return extract_pdf(path)
 	if allow_text_fallback and looks_like_text_file(path):
 		return extract_plain_text(path)
 	raise TextExtractionError("unsupported", "Unsupported file type.")
@@ -348,69 +344,6 @@ def extract_pptx(path: Path) -> ExtractedText:
 	if not text.strip():
 		raise TextExtractionError("empty", "No extractable text found.")
 	return ExtractedText(text)
-
-
-def _prepare_pdf_dependencies() -> None:
-	# NVDA ships a frozen Python whose library.zip is only a SUBSET of the
-	# standard library, so some modules pypdf imports are missing there. Make
-	# the vendored stand-ins importable before pypdf is imported.
-	vendor_path = Path(__file__).resolve().parent / "_vendor"
-	if vendor_path.exists() and str(vendor_path) not in sys.path:
-		# Also puts the vendored "secrets" module (missing from NVDA) on the path.
-		sys.path.insert(0, str(vendor_path))
-	# pypdf imports xml.dom.minidom for XMP metadata. NVDA keeps xml.etree but
-	# strips xml.dom. Register the vendored xml.dom as a subpackage of the real
-	# xml package via an explicit spec (extending xml.__path__ is unreliable in
-	# NVDA's frozen import system). This lets pypdf import xml.dom.minidom without
-	# shadowing the real xml package, which xml.etree elsewhere still needs.
-	try:
-		import xml.dom.minidom  # noqa: F401
-	except Exception:
-		try:
-			import importlib.util
-			import xml
-
-			dom_dir = vendor_path / "_stdlib" / "xml" / "dom"
-			if dom_dir.is_dir() and "xml.dom" not in sys.modules:
-				spec = importlib.util.spec_from_file_location(
-					"xml.dom",
-					str(dom_dir / "__init__.py"),
-					submodule_search_locations=[str(dom_dir)],
-				)
-				module = importlib.util.module_from_spec(spec)
-				sys.modules["xml.dom"] = module
-				spec.loader.exec_module(module)
-				xml.dom = module
-		except Exception:
-			pass
-
-
-def extract_pdf(path: Path) -> ExtractedText:
-	_prepare_pdf_dependencies()
-	try:
-		from pypdf import PdfReader
-	except Exception as exc:
-		# Surface the underlying cause (for example a stdlib module missing from
-		# NVDA's frozen Python) so the search statistics name the real problem
-		# instead of a generic "not available" message.
-		raise TextExtractionError(
-			"unsupported",
-			"PDF text extraction is not available in this installation: {error}".format(error=exc),
-		) from exc
-	try:
-		reader = PdfReader(str(path))
-		parts = []
-		page_offsets = []
-		for index, page in enumerate(reader.pages, start=1):
-			page_offsets.append((index, sum(len(part) for part in parts)))
-			parts.append(page.extract_text() or "")
-			parts.append("\n")
-	except Exception as exc:
-		raise TextExtractionError("unreadable", f"PDF could not be read: {exc}") from exc
-	text = "".join(parts)
-	if not text.strip():
-		raise TextExtractionError("empty", "No extractable text found.")
-	return ExtractedText(text, tuple(page_offsets))
 
 
 class VisibleTextHTMLParser(HTMLParser):
