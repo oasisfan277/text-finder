@@ -73,6 +73,7 @@ except NameError:
 
 
 CONFIG_SECTION = "textFinder"
+AUTO_WORD_LOCATION_RESULT_LIMIT = 50
 PDF_VIEWER_APP_NAMES = {
 	"acrobat",
 	"acrord32",
@@ -1167,6 +1168,11 @@ def log_search_issue_details(statistics):
 			log_info("Text Finder search %s file: %s; reason: %s", label, path, reason)
 
 
+def should_auto_enrich_word_locations(results):
+	docx_count = sum(1 for result in results if result.path.suffix.lower() == ".docx")
+	return 0 < docx_count <= AUTO_WORD_LOCATION_RESULT_LIMIT
+
+
 class TextFinderDialog(wx.Dialog):
 	def __init__(self, parent, target):
 		super().__init__(parent, title=_("Text Finder"))
@@ -1397,11 +1403,28 @@ class TextFinderDialog(wx.Dialog):
 			self.resultsCtrl.SetSelection(0)
 			self.resultsCtrl.SetFocus()
 		ui.message(statistics.summary_message())
-		if has_docx:
+		if should_auto_enrich_word_locations(results):
 			self.start_word_location_enrichment(results, self._search_generation)
+		elif has_docx:
+			self.clear_word_pending_for_results(results, self._search_generation)
 
 	def _has_docx_results(self, results):
 		return any(result.path.suffix.lower() == ".docx" for result in results)
+
+	def clear_word_pending_for_results(self, results, generation):
+		docx_indices = [
+			index
+			for index, result in enumerate(results)
+			if result.path.suffix.lower() == ".docx" and result.word_pending
+		]
+		if not docx_indices:
+			return
+		self.clear_word_pending(generation, docx_indices)
+		ui.message(
+			_(
+				"Word page and visual line lookup skipped for {count} results to keep NVDA responsive. Use Go to Search Result on one result when needed."
+			).format(count=len(docx_indices))
+		)
 
 	def start_word_location_enrichment(self, results, generation):
 		docx_count = sum(1 for result in results if result.path.suffix.lower() == ".docx")

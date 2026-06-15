@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.30
+
+- Prevented large Word folder searches from freezing NVDA by skipping automatic page and visual line lookup when there are more than 50 Word results.
+
 ## 0.3.29
 
 - Fixed PDF searches returning no results on NVDA, whose bundled Python omits the `secrets` and `xml.dom` modules that the PDF reader needs; these are now provided with the add-on.

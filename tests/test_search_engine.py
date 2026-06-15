@@ -43,6 +43,7 @@ from addon.globalPlugins.textFinder import (
 	pdf_page_uri,
 	render_invisible_text,
 	SETTING_DEFAULTS,
+	should_auto_enrich_word_locations,
 )
 from addon.globalPlugins.textFinder.text_extractors import (
 	ExtractedText,
@@ -522,6 +523,22 @@ def test_single_file_statistics_report_unreadable_file():
 def test_word_visual_line_location_omits_column():
 	result = SearchResult(path=Path("book.docx"), line=12, column=0, preview="match", page=3, location_unit="Visual line")
 	assert result.format_location() == "Page 3, visual line 12"
+
+
+def test_small_word_result_set_can_auto_enrich_locations():
+	results = [
+		SearchResult(path=Path("book.docx"), line=1, column=1, preview="cat"),
+		SearchResult(path=Path("notes.txt"), line=1, column=1, preview="cat"),
+	]
+	assert should_auto_enrich_word_locations(results) is True
+
+
+def test_large_word_result_set_skips_auto_location_enrichment():
+	results = [
+		SearchResult(path=Path("book.docx"), line=index + 1, column=1, preview="cat")
+		for index in range(51)
+	]
+	assert should_auto_enrich_word_locations(results) is False
 
 
 def test_can_open_in_notepad_accepts_text_editor_friendly_files():
