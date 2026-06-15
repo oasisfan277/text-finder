@@ -5,6 +5,7 @@ import tempfile
 import threading
 import traceback
 import ctypes
+import time
 from dataclasses import replace
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -1179,6 +1180,7 @@ def get_open_word_visual_locations(path, results, extracted_text, select_result=
 		return {}
 	payload = {
 		"fileName": Path(path).name,
+		"fullName": str(Path(path)),
 		"requests": requests,
 		"selectResult": bool(select_result),
 	}
@@ -1242,7 +1244,12 @@ $word = [Runtime.InteropServices.Marshal]::GetActiveObject('Word.Application')
 $document = $null
 for ($index = 1; $index -le $word.Documents.Count; $index++) {
 	$candidate = $word.Documents.Item($index)
-	if ($candidate.Name -eq $payload.fileName) {
+	$candidateFullName = $null
+	try {
+		$candidateFullName = [string] $candidate.FullName
+	} catch {
+	}
+	if ($candidateFullName -eq $payload.fullName -or $candidate.Name -eq $payload.fileName) {
 		$document = $candidate
 		break
 	}
@@ -1370,14 +1377,17 @@ def go_to_word_result(result, extracted_text):
 
 def open_docx_result_in_word(result, extracted_text):
 	try:
-		locations = get_docx_visual_locations(result.path, [result], extracted_text, read_only=False, bring_to_front=True)
-		location = locations.get(0)
-		if location:
-			page, visual_line = location
-			schedule_window_foreground(result.path)
-			ui.message(_("Opened in Word at page {page}, visual line {line}.").format(page=page, line=visual_line))
-			return replace(result, page=page, line=visual_line, column=0, location_unit="Visual line", word_pending=False)
-		ui.message(_("Opened in Word, but Word did not report a page or visual line."))
+		os.startfile(str(result.path))
+		schedule_window_foreground(result.path)
+		for _attempt in range(12):
+			time.sleep(0.5)
+			locations = get_open_word_visual_locations(result.path, [result], extracted_text, select_result=True)
+			if locations and 0 in locations:
+				page, visual_line = locations[0]
+				schedule_window_foreground(result.path)
+				ui.message(_("Opened in Word at page {page}, visual line {line}.").format(page=page, line=visual_line))
+				return replace(result, page=page, line=visual_line, column=0, location_unit="Visual line", word_pending=False)
+		ui.message(_("Opened in Word, but Text Finder could not move to the exact result."))
 		return result
 	except Exception:
 		log_exception("Text Finder could not open DOCX result in Word.")

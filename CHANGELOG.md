@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.3
+
+- Open Word results through Windows' normal file opening route first, then attach to Word and move to the result, preserving Word's usual AutoSave and collaboration behavior more reliably.
+- Match already-open Word documents by full path before falling back to the document name.
+
 ## 0.4.2
 
 - Open Word results in editable mode when the user chooses Open File, while keeping background Word location checks read-only.

@@ -102,6 +102,7 @@ def test_open_word_location_script_uses_running_word_document():
 	assert "GetActiveObject('Word.Application')" in OPEN_WORD_LOCATION_SCRIPT
 	assert "$word.Documents.Count" in OPEN_WORD_LOCATION_SCRIPT
 	assert "selectResult" in OPEN_WORD_LOCATION_SCRIPT
+	assert "$payload.fullName" in OPEN_WORD_LOCATION_SCRIPT
 	assert "AppActivate" in OPEN_WORD_LOCATION_SCRIPT
 
 
