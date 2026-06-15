@@ -4,6 +4,7 @@ import json
 import tempfile
 import threading
 import traceback
+import ctypes
 from dataclasses import replace
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -754,6 +755,12 @@ class TextFinderDialog(wx.Dialog):
 		self.queryCtrl.Bind(wx.EVT_TEXT, self.on_query_text)
 		self.resultsCtrl.Bind(wx.EVT_LISTBOX_DCLICK, self.on_open_result)
 		self.resultsCtrl.Bind(wx.EVT_CHAR_HOOK, self.on_results_char_hook)
+		self.update_action_button_visibility()
+
+	def update_action_button_visibility(self):
+		show_go_to_result = Path(self.target).is_file()
+		self.goToResultButton.Show(show_go_to_result)
+		self.Layout()
 
 	def on_search(self, evt):
 		query = self.queryCtrl.GetValue()
@@ -842,6 +849,7 @@ class TextFinderDialog(wx.Dialog):
 		self._search_generation += 1
 		self.refresh_results_list()
 		self.searchButton.Enable()
+		self.update_action_button_visibility()
 		has_docx = self._has_docx_results(results)
 		log_info(
 			"Text Finder search complete. target=%s exists=%s is_file=%s suffix=%s results=%d files_with_matches=%d supported=%d unsupported=%d no_text=%d unreadable=%d duration=%.2f has_docx=%s",
@@ -1367,8 +1375,48 @@ def get_word_application(new_instance=False):
 def open_file_or_select(path):
 	try:
 		os.startfile(str(path))
+		schedule_window_foreground(path)
 	except Exception:
 		subprocess.Popen(["explorer.exe", "/select,", str(path)])
+		schedule_window_foreground(path)
+
+
+def schedule_window_foreground(path):
+	threading.Timer(0.8, bring_window_for_path_to_front, args=(Path(path),)).start()
+
+
+def bring_window_for_path_to_front(path):
+	try:
+		file_name = path.name.lower()
+		if not file_name:
+			return False
+		user32 = ctypes.windll.user32
+		matches = []
+
+		def enum_window(hwnd, _lparam):
+			if not user32.IsWindowVisible(hwnd):
+				return True
+			length = user32.GetWindowTextLengthW(hwnd)
+			if length <= 0:
+				return True
+			buffer = ctypes.create_unicode_buffer(length + 1)
+			user32.GetWindowTextW(hwnd, buffer, length + 1)
+			if file_name in buffer.value.lower():
+				matches.append(hwnd)
+				return False
+			return True
+
+		enum_proc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)(enum_window)
+		user32.EnumWindows(enum_proc, 0)
+		if not matches:
+			return False
+		hwnd = matches[0]
+		user32.ShowWindow(hwnd, 9)
+		user32.SetForegroundWindow(hwnd)
+		return True
+	except Exception:
+		log_exception("Text Finder could not bring the opened file window to the front.")
+		return False
 
 
 class StatisticsDialog(wx.Dialog):

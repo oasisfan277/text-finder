@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1
+
+- Hid the Go to Search Result button during folder searches, where Open File already opens the selected result.
+- Brought opened file windows forward after using Open File so users do not need to hunt through several open windows.
+
 ## 0.4.0
 
 - Reset Text Finder to a Word-first design based on the faster 0.3.13 behavior, with automatic Word page and visual line lookup in results.
