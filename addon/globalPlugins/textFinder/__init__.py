@@ -1197,6 +1197,7 @@ class TextFinderDialog(wx.Dialog):
 		self._search_generation = 0
 		self._closed = False
 		self._cancel_search = threading.Event()
+		self._more_info_running = False
 		self._build()
 		self.CentreOnScreen()
 
@@ -1256,11 +1257,13 @@ class TextFinderDialog(wx.Dialog):
 		self.searchButton = wx.Button(self, label=_("&Search"))
 		self.openFileButton = wx.Button(self, label=_("Open Fi&le"))
 		self.goToResultButton = wx.Button(self, label=_("&Go to Search Result"))
+		self.moreInfoButton = wx.Button(self, label=_("Get &More Info"))
 		self.openButton = wx.Button(self, label=_("&Open Result"))
 		self.statsButton = wx.Button(self, label=_("Search Stat&istics"))
 		self.closeButton = wx.Button(self, wx.ID_CANCEL, _("Close"))
 		buttons = [self.searchButton]
 		buttons.append(self.goToResultButton)
+		buttons.append(self.moreInfoButton)
 		if file_search:
 			self.openFileButton.Hide()
 			self.openButton.Hide()
@@ -1279,6 +1282,7 @@ class TextFinderDialog(wx.Dialog):
 		self.searchButton.Bind(wx.EVT_BUTTON, self.on_search)
 		self.openFileButton.Bind(wx.EVT_BUTTON, self.on_open_file_from_result)
 		self.goToResultButton.Bind(wx.EVT_BUTTON, self.on_go_to_result)
+		self.moreInfoButton.Bind(wx.EVT_BUTTON, self.on_get_more_info)
 		self.openButton.Bind(wx.EVT_BUTTON, self.on_open_result)
 		self.statsButton.Bind(wx.EVT_BUTTON, self.on_statistics)
 		self.closeButton.Bind(wx.EVT_BUTTON, self.on_close)
@@ -1587,6 +1591,52 @@ class TextFinderDialog(wx.Dialog):
 
 	def on_go_to_result(self, evt):
 		self.go_to_selected_result()
+
+	def on_get_more_info(self, evt):
+		self.get_more_info_for_selected_result()
+
+	def get_more_info_for_selected_result(self):
+		result = self.get_selected_result()
+		if result is None:
+			return
+		if result.path.suffix.lower() != ".docx":
+			ui.message(_("This result already has its available location: {location}.").format(location=result.format_location()))
+			return
+		if result.location_unit == "Visual line" and not result.word_pending:
+			ui.message(_("This Word result is on {location}.").format(location=result.format_location()))
+			return
+		if self._more_info_running:
+			ui.message(_("Already getting more information for a result."))
+			return
+		index = self.resultsCtrl.GetSelection()
+		generation = self._search_generation
+		self._more_info_running = True
+		self.moreInfoButton.Disable()
+		ui.message(_("Getting page and visual line for this Word result."))
+		threading.Thread(target=self._run_more_info_lookup, args=(index, result, generation), daemon=True).start()
+
+	def _run_more_info_lookup(self, index, result, generation):
+		try:
+			extracted_text = extract_text(result.path).text
+			updated_result = get_more_info_for_word_result(result, extracted_text)
+		except Exception:
+			log_exception("Text Finder could not get more information for the selected Word result.")
+			updated_result = None
+		wx.CallAfter(self.finish_more_info_lookup, index, updated_result, generation)
+
+	def finish_more_info_lookup(self, index, updated_result, generation):
+		self._more_info_running = False
+		if self._closed or generation != self._search_generation:
+			return
+		self.moreInfoButton.Enable()
+		if updated_result is None:
+			ui.message(_("Could not get page and visual line for this Word result."))
+			return
+		if 0 <= index < len(self.results):
+			self.results[index] = updated_result
+			self.resultsCtrl.SetString(index, format_result_for_list(updated_result))
+			self.resultsCtrl.SetSelection(index)
+		ui.message(_("This Word result is on {location}.").format(location=updated_result.format_location()))
 
 	def go_to_selected_result(self):
 		result = self.get_selected_result()
@@ -1922,6 +1972,26 @@ def go_to_word_result(result, extracted_text):
 		log_exception("Text Finder could not move to the Word result.")
 		ui.message(_("Could not move to this result in Word."))
 		return None
+
+
+def get_more_info_for_word_result(result, extracted_text):
+	try:
+		locations = get_open_word_visual_locations(result.path, [result], extracted_text, select_result=False)
+		if locations is None:
+			locations = get_docx_visual_locations(
+				result.path,
+				[result],
+				extracted_text,
+				visible=False,
+				close_document=True,
+				quit_word=True,
+			)
+		if locations and 0 in locations:
+			page, visual_line = locations[0]
+			return replace(result, page=page, line=visual_line, column=0, location_unit="Visual line", word_pending=False)
+	except Exception:
+		log_exception("Text Finder could not get more information for a Word result.")
+	return None
 
 
 def go_to_non_word_result(result):

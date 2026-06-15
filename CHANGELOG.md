@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.32
+
+- Added a Get More Info action for a selected Word result, so page and visual line lookup runs only for that one result when requested.
+
 ## 0.3.31
 
 - Kept broad folder searches responsive by excluding PDFs from "all supported file types"; select PDF documents explicitly to search PDFs.
