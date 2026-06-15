@@ -118,10 +118,10 @@ def test_include_subfolders_is_on_by_default():
 	assert get_setting("searchIncludeSubfolders") is True
 
 
-def test_all_file_types_folder_search_skips_pdf_by_default():
+def test_all_file_types_folder_search_includes_pdf():
 	patterns = get_folder_file_patterns()
 	assert "*.docx" in patterns
-	assert "*.pdf" not in patterns
+	assert "*.pdf" in patterns
 
 
 def test_all_file_types_does_not_trigger_pdf_detection_by_default():

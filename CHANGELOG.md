@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.33
+
+- Restored PDFs to all-file folder searches while keeping open-PDF detection out of startup.
+- Restored automatic Word page and visual line lookup for the first 50 Word results, with a More Word Info button for later batches.
+
 ## 0.3.32
 
 - Added a Get More Info action for a selected Word result, so page and visual line lookup runs only for that one result when requested.

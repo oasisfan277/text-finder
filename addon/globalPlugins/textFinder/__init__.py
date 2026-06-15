@@ -145,15 +145,10 @@ def get_active_file_patterns():
 
 
 def get_folder_file_patterns():
-	patterns = get_active_file_patterns()
-	if get_setting("searchAllFileTypes"):
-		return tuple(pattern for pattern in patterns if pattern.lower() != "*.pdf")
-	return patterns
+	return get_active_file_patterns()
 
 
 def folder_file_types_summary():
-	if get_setting("searchAllFileTypes"):
-		return _("All supported file types except PDF documents. Select PDF documents in Text Finder settings to search PDFs.")
 	return active_file_types_summary()
 
 
@@ -1198,6 +1193,8 @@ class TextFinderDialog(wx.Dialog):
 		self._closed = False
 		self._cancel_search = threading.Event()
 		self._more_info_running = False
+		self._word_info_indices = []
+		self._word_info_next_position = 0
 		self._build()
 		self.CentreOnScreen()
 
@@ -1257,7 +1254,7 @@ class TextFinderDialog(wx.Dialog):
 		self.searchButton = wx.Button(self, label=_("&Search"))
 		self.openFileButton = wx.Button(self, label=_("Open Fi&le"))
 		self.goToResultButton = wx.Button(self, label=_("&Go to Search Result"))
-		self.moreInfoButton = wx.Button(self, label=_("Get &More Info"))
+		self.moreInfoButton = wx.Button(self, label=_("&More Word Info"))
 		self.openButton = wx.Button(self, label=_("&Open Result"))
 		self.statsButton = wx.Button(self, label=_("Search Stat&istics"))
 		self.closeButton = wx.Button(self, wx.ID_CANCEL, _("Close"))
@@ -1305,6 +1302,8 @@ class TextFinderDialog(wx.Dialog):
 		self.searchButton.Disable()
 		self.resultsCtrl.Clear()
 		self._cancel_search.clear()
+		self._word_info_indices = []
+		self._word_info_next_position = 0
 		file_patterns = get_active_file_patterns() if file_search else get_folder_file_patterns()
 		file_types_summary = active_file_types_summary() if file_search else folder_file_types_summary()
 		ui.message(_("Searching {file_types}.").format(file_types=file_types_summary))
@@ -1396,6 +1395,12 @@ class TextFinderDialog(wx.Dialog):
 		self.results = results
 		self.statistics = statistics
 		self._search_generation += 1
+		self._word_info_indices = [
+			index
+			for index, result in enumerate(results)
+			if result.path.suffix.lower() == ".docx"
+		]
+		self._word_info_next_position = 0
 		self.refresh_results_list()
 		self.searchButton.Enable()
 		has_docx = self._has_docx_results(results)
@@ -1422,10 +1427,9 @@ class TextFinderDialog(wx.Dialog):
 			self.resultsCtrl.SetSelection(0)
 			self.resultsCtrl.SetFocus()
 		ui.message(statistics.summary_message())
-		if should_auto_enrich_word_locations(results):
-			self.start_word_location_enrichment(results, self._search_generation)
-		elif has_docx:
-			self.clear_word_pending_for_results(results, self._search_generation)
+		if has_docx:
+			self.set_word_pending_for_indices(self._word_info_indices, False)
+			self.start_next_word_info_batch(auto=True)
 
 	def _has_docx_results(self, results):
 		return any(result.path.suffix.lower() == ".docx" for result in results)
@@ -1445,16 +1449,25 @@ class TextFinderDialog(wx.Dialog):
 			).format(count=len(docx_indices))
 		)
 
-	def start_word_location_enrichment(self, results, generation):
-		docx_count = sum(1 for result in results if result.path.suffix.lower() == ".docx")
+	def start_word_location_enrichment(self, results, generation, result_indices=None):
+		if result_indices is None:
+			result_indices = [
+				index
+				for index, result in enumerate(results)
+				if result.path.suffix.lower() == ".docx"
+			]
+		docx_count = len(result_indices)
 		log_info("Text Finder getting Word locations for %d DOCX results in the background.", docx_count)
-		ui.message(_("Getting Word page and visual line numbers in the background."))
-		thread = threading.Thread(target=self.enrich_word_locations, args=(results, generation), daemon=True)
+		self.set_word_pending_for_indices(result_indices, True)
+		thread = threading.Thread(target=self.enrich_word_locations, args=(results, generation, list(result_indices)), daemon=True)
 		thread.start()
 
-	def enrich_word_locations(self, original_results, generation):
+	def enrich_word_locations(self, original_results, generation, result_indices=None):
+		if result_indices is None:
+			result_indices = list(range(len(original_results)))
 		indices_by_path = {}
-		for index, result in enumerate(original_results):
+		for index in result_indices:
+			result = original_results[index]
 			if result.path.suffix.lower() == ".docx":
 				indices_by_path.setdefault(result.path, []).append(index)
 		docx_count = sum(len(indices) for indices in indices_by_path.values())
@@ -1501,7 +1514,7 @@ class TextFinderDialog(wx.Dialog):
 					log_exception("Text Finder could not close the hidden Word application.")
 			uninitialize_com()
 		log_info("Text Finder Word location lookup finished. updated=%d of docx=%d", updated_total, docx_count)
-		wx.CallAfter(self.announce_word_enrichment_done, generation, updated_total, docx_count)
+		wx.CallAfter(self.finish_word_info_batch, generation, updated_total, docx_count)
 
 	def apply_word_locations(self, generation, updates, cleared):
 		if generation != self._search_generation:
@@ -1521,6 +1534,12 @@ class TextFinderDialog(wx.Dialog):
 		for result_index in indices:
 			if 0 <= result_index < len(self.results) and self.results[result_index].word_pending:
 				self.results[result_index] = replace(self.results[result_index], word_pending=False)
+				self.resultsCtrl.SetString(result_index, format_result_for_list(self.results[result_index]))
+
+	def set_word_pending_for_indices(self, indices, pending):
+		for result_index in indices:
+			if 0 <= result_index < len(self.results):
+				self.results[result_index] = replace(self.results[result_index], word_pending=pending)
 				self.resultsCtrl.SetString(result_index, format_result_for_list(self.results[result_index]))
 
 	def announce_word_enrichment_done(self, generation, updated_total, docx_count):
@@ -1593,50 +1612,48 @@ class TextFinderDialog(wx.Dialog):
 		self.go_to_selected_result()
 
 	def on_get_more_info(self, evt):
-		self.get_more_info_for_selected_result()
+		self.start_next_word_info_batch(auto=False)
 
-	def get_more_info_for_selected_result(self):
-		result = self.get_selected_result()
-		if result is None:
-			return
-		if result.path.suffix.lower() != ".docx":
-			ui.message(_("This result already has its available location: {location}.").format(location=result.format_location()))
-			return
-		if result.location_unit == "Visual line" and not result.word_pending:
-			ui.message(_("This Word result is on {location}.").format(location=result.format_location()))
-			return
+	def start_next_word_info_batch(self, auto=False):
 		if self._more_info_running:
-			ui.message(_("Already getting more information for a result."))
+			if not auto:
+				ui.message(_("Already getting Word page and visual line numbers."))
 			return
-		index = self.resultsCtrl.GetSelection()
-		generation = self._search_generation
+		if self._word_info_next_position >= len(self._word_info_indices):
+			if not auto:
+				ui.message(_("No more Word results need page and visual line lookup."))
+			return
+		batch = self._word_info_indices[
+			self._word_info_next_position:self._word_info_next_position + AUTO_WORD_LOCATION_RESULT_LIMIT
+		]
+		self._word_info_next_position += len(batch)
 		self._more_info_running = True
 		self.moreInfoButton.Disable()
-		ui.message(_("Getting page and visual line for this Word result."))
-		threading.Thread(target=self._run_more_info_lookup, args=(index, result, generation), daemon=True).start()
+		remaining = len(self._word_info_indices) - self._word_info_next_position
+		if auto:
+			ui.message(_("Getting Word page and visual line numbers for the first {count} results.").format(count=len(batch)))
+		else:
+			ui.message(_("Getting Word page and visual line numbers for the next {count} results.").format(count=len(batch)))
+		self.start_word_location_enrichment(self.results, self._search_generation, batch)
+		if remaining:
+			log_info("Text Finder has %d DOCX results waiting for More Word Info.", remaining)
 
-	def _run_more_info_lookup(self, index, result, generation):
-		try:
-			extracted_text = extract_text(result.path).text
-			updated_result = get_more_info_for_word_result(result, extracted_text)
-		except Exception:
-			log_exception("Text Finder could not get more information for the selected Word result.")
-			updated_result = None
-		wx.CallAfter(self.finish_more_info_lookup, index, updated_result, generation)
-
-	def finish_more_info_lookup(self, index, updated_result, generation):
+	def finish_word_info_batch(self, generation, updated_total, docx_count):
 		self._more_info_running = False
 		if self._closed or generation != self._search_generation:
 			return
 		self.moreInfoButton.Enable()
-		if updated_result is None:
-			ui.message(_("Could not get page and visual line for this Word result."))
-			return
-		if 0 <= index < len(self.results):
-			self.results[index] = updated_result
-			self.resultsCtrl.SetString(index, format_result_for_list(updated_result))
-			self.resultsCtrl.SetSelection(index)
-		ui.message(_("This Word result is on {location}.").format(location=updated_result.format_location()))
+		remaining = len(self._word_info_indices) - self._word_info_next_position
+		if remaining:
+			if updated_total:
+				ui.message(_("Word page and visual line numbers are ready for {count} results. {remaining} Word results remain.").format(count=updated_total, remaining=remaining))
+			elif docx_count:
+				ui.message(_("Word page and visual line numbers could not be added for this batch. {remaining} Word results remain.").format(remaining=remaining))
+		else:
+			if updated_total:
+				ui.message(_("Word page and visual line lookup is complete."))
+			elif docx_count:
+				ui.message(_("Word page and visual line numbers could not be added. Use Open File on one result to test Word directly."))
 
 	def go_to_selected_result(self):
 		result = self.get_selected_result()
