@@ -144,13 +144,26 @@ def get_active_file_patterns():
 	return tuple("*{ext}".format(ext=ext) for ext in selected)
 
 
+def get_folder_file_patterns():
+	patterns = get_active_file_patterns()
+	if get_setting("searchAllFileTypes"):
+		return tuple(pattern for pattern in patterns if pattern.lower() != "*.pdf")
+	return patterns
+
+
+def folder_file_types_summary():
+	if get_setting("searchAllFileTypes"):
+		return _("All supported file types except PDF documents. Select PDF documents in Text Finder settings to search PDFs.")
+	return active_file_types_summary()
+
+
 def pdf_is_searched():
 	# Detecting an open PDF at launch runs several PowerShell scans, which slows
 	# down every Text Finder launch. Only do that work when PDF is actually one
 	# of the file types being searched, so launching stays fast when PDFs are not
 	# in scope. Mirrors the fallback-to-all-types rule in get_active_file_patterns.
 	if get_setting("searchAllFileTypes"):
-		return True
+		return False
 	selected = parse_extension_list(get_setting("searchFileTypes"))
 	if not selected:
 		return True
@@ -1288,13 +1301,15 @@ class TextFinderDialog(wx.Dialog):
 		self.searchButton.Disable()
 		self.resultsCtrl.Clear()
 		self._cancel_search.clear()
-		ui.message(_("Searching {file_types}.").format(file_types=active_file_types_summary()))
+		file_patterns = get_active_file_patterns() if file_search else get_folder_file_patterns()
+		file_types_summary = active_file_types_summary() if file_search else folder_file_types_summary()
+		ui.message(_("Searching {file_types}.").format(file_types=file_types_summary))
 		options = SearchOptions(
 			query=query,
 			whole_word=self.exactWholeWordCtrl.GetValue(),
 			case_sensitive=self.caseCtrl.GetValue(),
 			include_subfolders=False if file_search else self.subfoldersCtrl.GetValue(),
-			file_patterns=get_active_file_patterns(),
+			file_patterns=file_patterns,
 			report_page_numbers=self.reportPagesCtrl.GetValue(),
 		)
 		self._save_search_options(options, save_include_subfolders=not file_search)

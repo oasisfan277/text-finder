@@ -26,6 +26,7 @@ from addon.globalPlugins.textFinder import (
 	file_type_is_selected,
 	format_result_for_list,
 	get_active_file_patterns,
+	get_folder_file_patterns,
 	get_setting,
 	get_open_word_visual_locations,
 	get_word_active_document_path,
@@ -41,6 +42,7 @@ from addon.globalPlugins.textFinder import (
 	parse_extension_list,
 	path_from_shell_location_url,
 	pdf_page_uri,
+	pdf_is_searched,
 	render_invisible_text,
 	SETTING_DEFAULTS,
 	should_auto_enrich_word_locations,
@@ -114,6 +116,16 @@ def test_close_after_go_to_result_is_off_by_default():
 def test_include_subfolders_is_on_by_default():
 	assert SETTING_DEFAULTS["searchIncludeSubfolders"] is True
 	assert get_setting("searchIncludeSubfolders") is True
+
+
+def test_all_file_types_folder_search_skips_pdf_by_default():
+	patterns = get_folder_file_patterns()
+	assert "*.docx" in patterns
+	assert "*.pdf" not in patterns
+
+
+def test_all_file_types_does_not_trigger_pdf_detection_by_default():
+	assert pdf_is_searched() is False
 
 
 def test_word_file_name_from_word_window_title():

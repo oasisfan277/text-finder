@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.31
+
+- Kept broad folder searches responsive by excluding PDFs from "all supported file types"; select PDF documents explicitly to search PDFs.
+
 ## 0.3.30
 
 - Prevented large Word folder searches from freezing NVDA by skipping automatic page and visual line lookup when there are more than 50 Word results.
