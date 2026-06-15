@@ -23,6 +23,7 @@ from addon.globalPlugins.textFinder import (
 	get_word_active_document_path,
 	OPEN_WORD_LOCATION_SCRIPT,
 	word_file_name_from_object_name,
+	open_word_document_editable,
 	open_word_document_read_only,
 	ordered_supported_file_types,
 	normalize_search_folder,
@@ -79,10 +80,29 @@ def test_open_word_document_read_only_uses_read_only_flags():
 	assert word.Documents.calls == [("book.docx", False, True, False)]
 
 
+def test_open_word_document_editable_uses_editable_flags():
+	class FakeDocuments:
+		def __init__(self):
+			self.calls = []
+
+		def Open(self, *args):
+			self.calls.append(args)
+			return "document"
+
+	class FakeWord:
+		def __init__(self):
+			self.Documents = FakeDocuments()
+
+	word = FakeWord()
+	assert open_word_document_editable(word, Path("book.docx")) == "document"
+	assert word.Documents.calls == [("book.docx", False, False, True)]
+
+
 def test_open_word_location_script_uses_running_word_document():
 	assert "GetActiveObject('Word.Application')" in OPEN_WORD_LOCATION_SCRIPT
 	assert "$word.Documents.Count" in OPEN_WORD_LOCATION_SCRIPT
 	assert "selectResult" in OPEN_WORD_LOCATION_SCRIPT
+	assert "AppActivate" in OPEN_WORD_LOCATION_SCRIPT
 
 
 def test_selected_file_types_are_ordered_first_when_search_all_is_off():

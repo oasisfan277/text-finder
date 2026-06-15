@@ -1121,16 +1121,19 @@ def initialize_com_for_thread():
 	except Exception:
 		return lambda: None
 
-def get_docx_visual_locations(path, results, extracted_text, visible=True, close_document=False, quit_word=False):
+def get_docx_visual_locations(path, results, extracted_text, visible=True, close_document=False, quit_word=False, read_only=True, bring_to_front=False):
 	uninitialize_com = initialize_com_for_thread()
 	word = None
 	document = None
 	try:
 		word = get_word_application(new_instance=not visible or quit_word)
 		word.Visible = visible
-		document = open_word_document_read_only(word, path)
+		document = open_word_document(word, path, read_only=read_only)
 		document.Activate()
-		return collect_docx_visual_locations(word, results, extracted_text)
+		locations = collect_docx_visual_locations(word, results, extracted_text)
+		if bring_to_front:
+			activate_word_window(word, document, path)
+		return locations
 	finally:
 		if close_document and document is not None:
 			try:
@@ -1149,7 +1152,16 @@ def open_word_document_read_only(word, path):
 	# FileName, ConfirmConversions, ReadOnly, AddToRecentFiles.
 	# ReadOnly lets Word report page and visual line information even when the
 	# user already has the document open for editing.
-	return word.Documents.Open(str(path), False, True, False)
+	return open_word_document(word, path, read_only=True, add_to_recent=False)
+
+
+def open_word_document_editable(word, path):
+	return open_word_document(word, path, read_only=False, add_to_recent=True)
+
+
+def open_word_document(word, path, read_only=True, add_to_recent=False):
+	# FileName, ConfirmConversions, ReadOnly, AddToRecentFiles.
+	return word.Documents.Open(str(path), False, bool(read_only), bool(add_to_recent))
 
 
 def get_open_word_visual_locations(path, results, extracted_text, select_result=False):
@@ -1238,7 +1250,21 @@ for ($index = 1; $index -le $word.Documents.Count; $index++) {
 if ($null -eq $document) {
 	throw "The open Word document was not found."
 }
+if ($payload.selectResult) {
+	$word.Visible = $true
+}
 $document.Activate()
+if ($payload.selectResult) {
+	try {
+		$word.Activate()
+	} catch {
+	}
+	try {
+		$shell = New-Object -ComObject WScript.Shell
+		$shell.AppActivate($word.Caption) | Out-Null
+	} catch {
+	}
+}
 $selection = $word.Selection
 $find = $selection.Find
 $find.ClearFormatting()
@@ -1331,6 +1357,7 @@ def go_to_word_result(result, extracted_text):
 		locations = get_open_word_visual_locations(result.path, [result], extracted_text, select_result=True)
 		if locations and 0 in locations:
 			page, visual_line = locations[0]
+			schedule_window_foreground(result.path)
 			ui.message(_("Moved to page {page}, visual line {line}.").format(page=page, line=visual_line))
 			return replace(result, page=page, line=visual_line, column=0, location_unit="Visual line", word_pending=False)
 		ui.message(_("Could not move to this result in the open Word document."))
@@ -1343,10 +1370,11 @@ def go_to_word_result(result, extracted_text):
 
 def open_docx_result_in_word(result, extracted_text):
 	try:
-		locations = get_docx_visual_locations(result.path, [result], extracted_text)
+		locations = get_docx_visual_locations(result.path, [result], extracted_text, read_only=False, bring_to_front=True)
 		location = locations.get(0)
 		if location:
 			page, visual_line = location
+			schedule_window_foreground(result.path)
 			ui.message(_("Opened in Word at page {page}, visual line {line}.").format(page=page, line=visual_line))
 			return replace(result, page=page, line=visual_line, column=0, location_unit="Visual line", word_pending=False)
 		ui.message(_("Opened in Word, but Word did not report a page or visual line."))
@@ -1382,7 +1410,24 @@ def open_file_or_select(path):
 
 
 def schedule_window_foreground(path):
-	threading.Timer(0.8, bring_window_for_path_to_front, args=(Path(path),)).start()
+	timer = threading.Timer(0.8, bring_window_for_path_to_front, args=(Path(path),))
+	timer.daemon = True
+	timer.start()
+
+
+def activate_word_window(word, document, path):
+	try:
+		word.Visible = True
+	except Exception:
+		pass
+	for target in (document, getattr(word, "ActiveWindow", None), word):
+		if target is None:
+			continue
+		try:
+			target.Activate()
+		except Exception:
+			pass
+	schedule_window_foreground(path)
 
 
 def bring_window_for_path_to_front(path):

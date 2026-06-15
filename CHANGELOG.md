@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.2
+
+- Open Word results in editable mode when the user chooses Open File, while keeping background Word location checks read-only.
+- Improved Word foreground activation when opening or moving to a search result.
+
 ## 0.4.1
 
 - Hid the Go to Search Result button during folder searches, where Open File already opens the selected result.
