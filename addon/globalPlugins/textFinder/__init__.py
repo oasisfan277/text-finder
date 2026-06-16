@@ -74,6 +74,7 @@ except NameError:
 
 CONFIG_SECTION = "textFinder"
 WORD_LOCATION_BATCH_SIZE = 10
+WORD_AUTO_LOCATION_LIMIT = 50
 
 
 def _initialize_config():
@@ -897,17 +898,26 @@ class TextFinderDialog(wx.Dialog):
 
 	def start_word_location_enrichment(self, results, generation):
 		docx_count = sum(1 for result in results if result.path.suffix.lower() == ".docx")
-		log_info("Text Finder getting Word locations for %d DOCX results in the background.", docx_count)
-		self.set_word_status(_("Getting Word page and visual line numbers for {total} results.").format(total=docx_count))
+		limited_count = min(docx_count, WORD_AUTO_LOCATION_LIMIT)
+		log_info("Text Finder getting Word locations for %d of %d DOCX results in the background.", limited_count, docx_count)
+		if limited_count < docx_count:
+			self.set_word_status(_("Getting Word page and visual line numbers for the first {count} of {total} results.").format(count=limited_count, total=docx_count))
+		else:
+			self.set_word_status(_("Getting Word page and visual line numbers for {total} results.").format(total=docx_count))
 		thread = threading.Thread(target=self.enrich_word_locations, args=(results, generation), daemon=True)
 		thread.start()
 
 	def enrich_word_locations(self, original_results, generation):
+		all_docx_indices = [index for index, result in enumerate(original_results) if result.path.suffix.lower() == ".docx"]
+		skipped_indices = all_docx_indices[WORD_AUTO_LOCATION_LIMIT:]
+		if skipped_indices:
+			wx.CallAfter(self.clear_word_pending, generation, skipped_indices)
 		indices_by_path = {}
-		for index, result in enumerate(original_results):
-			if result.path.suffix.lower() == ".docx":
-				indices_by_path.setdefault(result.path, []).append(index)
+		for index in all_docx_indices[:WORD_AUTO_LOCATION_LIMIT]:
+			result = original_results[index]
+			indices_by_path.setdefault(result.path, []).append(index)
 		docx_count = sum(len(indices) for indices in indices_by_path.values())
+		total_docx_count = len(all_docx_indices)
 		updated_total = 0
 		# Reuse a single hidden Word instance for the whole batch instead of
 		# starting and quitting Word once per file.
@@ -959,7 +969,7 @@ class TextFinderDialog(wx.Dialog):
 						cleared = [index for local_index, index in enumerate(batch_indices) if local_index not in locations]
 						updated_total += len(updates)
 						wx.CallAfter(self.apply_word_locations, generation, updates, cleared)
-						wx.CallAfter(self.announce_word_enrichment_progress, generation, updated_total, docx_count)
+						wx.CallAfter(self.announce_word_enrichment_progress, generation, updated_total, docx_count, total_docx_count)
 				finally:
 					if document is not None:
 						try:
@@ -1004,10 +1014,11 @@ class TextFinderDialog(wx.Dialog):
 		elif docx_count:
 			self.set_word_status(_("Word page and visual line numbers could not be added. Use Go to Search Result on one result to test Word directly."))
 
-	def announce_word_enrichment_progress(self, generation, updated_total, docx_count):
+	def announce_word_enrichment_progress(self, generation, updated_total, docx_count, total_docx_count=None):
 		if generation != self._search_generation or not updated_total or updated_total >= docx_count:
 			return
-		self.set_word_status(_("Word page and visual line numbers ready for {done} of {total} results.").format(done=updated_total, total=docx_count))
+		total = total_docx_count or docx_count
+		self.set_word_status(_("Word page and visual line numbers ready for {done} of first {limit} results. Total Word results: {total}.").format(done=updated_total, limit=docx_count, total=total))
 
 	def set_word_status(self, message):
 		self.wordStatusCtrl.SetValue(message)
@@ -1093,6 +1104,7 @@ class TextFinderDialog(wx.Dialog):
 			index = self.resultsCtrl.GetSelection()
 			self.results[index] = updated_result
 			self.resultsCtrl.SetString(index, format_result_for_list(updated_result))
+			self.Destroy()
 
 	def get_selected_result(self):
 		index = self.resultsCtrl.GetSelection()
@@ -1354,18 +1366,18 @@ foreach ($request in $payload.requests) {
 			}
 			$pageRange = $document.GoTo(1, 1, $targetPage)
 			$pageRange.Select()
-			if ($null -ne $targetLine) {
+			while ($find.Execute()) {
+				$currentPage = $selection.Information(3)
 				$currentLine = $selection.Information(10)
-				while ($currentLine -lt $targetLine) {
-					$selection.MoveDown(5, 1) | Out-Null
-					$newLine = $selection.Information(10)
-					if ($newLine -le $currentLine) {
-						break
-					}
-					$currentLine = $newLine
+				if ($currentPage -gt $targetPage) {
+					break
 				}
+				if ($currentPage -eq $targetPage -and ($null -eq $targetLine -or $currentLine -ge $targetLine)) {
+					$foundAtRequestedLocation = $true
+					break
+				}
+				$selection.Collapse(0)
 			}
-			$foundAtRequestedLocation = $true
 		} catch {
 			$selection.HomeKey(6) | Out-Null
 		}

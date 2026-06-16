@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.9
+
+- Keep Go to Search Result on the intended Word page by searching only within the reported page instead of moving by visual-line counts.
+- Close the Text Finder search dialog after a successful Word result jump.
+- Limit automatic Word page and visual line lookup to the first 50 Word results to reduce sluggishness in large documents.
+
 ## 0.4.8
 
 - Speed up Go to Search Result by jumping directly to the reported Word page and visual line when they are already known.

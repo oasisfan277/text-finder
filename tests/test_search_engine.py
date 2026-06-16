@@ -15,6 +15,7 @@ from addon.globalPlugins.textFinder.search_engine import (
 	preview_for_span,
 )
 from addon.globalPlugins.textFinder import (
+	WORD_AUTO_LOCATION_LIMIT,
 	WORD_LOCATION_BATCH_SIZE,
 	batched_items,
 	file_type_choice_label,
@@ -108,7 +109,11 @@ def test_open_word_location_script_uses_running_word_document():
 	assert "AppActivate" in OPEN_WORD_LOCATION_SCRIPT
 	assert "visualLine" in OPEN_WORD_LOCATION_SCRIPT
 	assert "$document.GoTo" in OPEN_WORD_LOCATION_SCRIPT
-	assert "MoveDown" in OPEN_WORD_LOCATION_SCRIPT
+	assert "$currentPage -gt $targetPage" in OPEN_WORD_LOCATION_SCRIPT
+
+
+def test_word_auto_location_limit_is_fifty_results():
+	assert WORD_AUTO_LOCATION_LIMIT == 50
 
 
 def test_word_location_batch_size_is_ten_results():
