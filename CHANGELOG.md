@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.7
+
+- Use the already-reported Word page and visual line as the anchor when going to a Word result, avoiding wrong jumps in documents with many repeated matches.
+- Stop background Word location lookup without rewriting every pending result, reducing sluggishness after Go to Search Result.
+
 ## 0.4.6
 
 - Show Word page and visual line lookup progress inside the main search dialog instead of announcing each batch separately.

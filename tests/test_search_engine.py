@@ -106,6 +106,8 @@ def test_open_word_location_script_uses_running_word_document():
 	assert "selectResult" in OPEN_WORD_LOCATION_SCRIPT
 	assert "$payload.fullName" in OPEN_WORD_LOCATION_SCRIPT
 	assert "AppActivate" in OPEN_WORD_LOCATION_SCRIPT
+	assert "visualLine" in OPEN_WORD_LOCATION_SCRIPT
+	assert "$document.GoTo" in OPEN_WORD_LOCATION_SCRIPT
 
 
 def test_word_location_batch_size_is_ten_results():

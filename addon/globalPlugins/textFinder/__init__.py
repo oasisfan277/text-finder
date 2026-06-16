@@ -934,9 +934,13 @@ class TextFinderDialog(wx.Dialog):
 							locations = None
 							if use_open_document_lookup:
 								locations = get_open_word_visual_locations(path, batch_results, extracted_text)
+								if not self.is_search_generation_current(generation):
+									return
 								if locations is None:
 									use_open_document_lookup = False
 							if locations is None:
+								if not self.is_search_generation_current(generation):
+									return
 								if word is None:
 									word = get_word_application(new_instance=True)
 									word.Visible = False
@@ -1011,7 +1015,6 @@ class TextFinderDialog(wx.Dialog):
 	def cancel_word_location_enrichment(self):
 		self._search_generation += 1
 		self.set_word_status(_("Word page and visual line lookup stopped."))
-		self._clear_pending_indices(range(len(self.results)))
 
 	def is_search_generation_current(self, generation):
 		return generation == self._search_generation
@@ -1231,6 +1234,8 @@ def get_open_word_visual_locations(path, results, extracted_text, select_result=
 			"index": index,
 			"text": matched_text,
 			"occurrence": extracted_text[:result.start].count(matched_text) + 1,
+			"page": result.page,
+			"visualLine": result.line if result.location_unit == "Visual line" and not result.word_pending else None,
 		})
 	if not requests:
 		return {}
@@ -1339,16 +1344,45 @@ foreach ($request in $payload.requests) {
 	$selection.HomeKey(6) | Out-Null
 	$find.Text = [string] $request.text
 	$foundCount = 0
-	while ($foundCount -lt [int] $request.occurrence) {
-		if (-not $find.Execute()) {
-			break
-		}
-		$foundCount += 1
-		if ($foundCount -lt [int] $request.occurrence) {
-			$selection.Collapse(0)
+	$foundAtRequestedLocation = $false
+	if ($payload.selectResult -and $null -ne $request.page) {
+		try {
+			$targetPage = [int] $request.page
+			$targetLine = $null
+			if ($null -ne $request.visualLine) {
+				$targetLine = [int] $request.visualLine
+			}
+			$pageRange = $document.GoTo(1, 1, $targetPage)
+			$pageRange.Select()
+			while ($find.Execute()) {
+				$currentPage = $selection.Information(3)
+				$currentLine = $selection.Information(10)
+				if ($currentPage -gt $targetPage) {
+					break
+				}
+				if ($currentPage -eq $targetPage -and ($null -eq $targetLine -or $currentLine -ge $targetLine)) {
+					$foundAtRequestedLocation = $true
+					break
+				}
+				$selection.Collapse(0)
+			}
+		} catch {
+			$selection.HomeKey(6) | Out-Null
 		}
 	}
-	if ($foundCount -eq [int] $request.occurrence) {
+	if (-not $foundAtRequestedLocation) {
+		$selection.HomeKey(6) | Out-Null
+		while ($foundCount -lt [int] $request.occurrence) {
+			if (-not $find.Execute()) {
+				break
+			}
+			$foundCount += 1
+			if ($foundCount -lt [int] $request.occurrence) {
+				$selection.Collapse(0)
+			}
+		}
+	}
+	if ($foundAtRequestedLocation -or $foundCount -eq [int] $request.occurrence) {
 		$locations[[string] $request.index] = @($selection.Information(3), $selection.Information(10))
 		if (-not $payload.selectResult) {
 			$selection.Collapse(0)
