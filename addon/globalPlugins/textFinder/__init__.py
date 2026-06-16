@@ -1354,18 +1354,18 @@ foreach ($request in $payload.requests) {
 			}
 			$pageRange = $document.GoTo(1, 1, $targetPage)
 			$pageRange.Select()
-			while ($find.Execute()) {
-				$currentPage = $selection.Information(3)
+			if ($null -ne $targetLine) {
 				$currentLine = $selection.Information(10)
-				if ($currentPage -gt $targetPage) {
-					break
+				while ($currentLine -lt $targetLine) {
+					$selection.MoveDown(5, 1) | Out-Null
+					$newLine = $selection.Information(10)
+					if ($newLine -le $currentLine) {
+						break
+					}
+					$currentLine = $newLine
 				}
-				if ($currentPage -eq $targetPage -and ($null -eq $targetLine -or $currentLine -ge $targetLine)) {
-					$foundAtRequestedLocation = $true
-					break
-				}
-				$selection.Collapse(0)
 			}
+			$foundAtRequestedLocation = $true
 		} catch {
 			$selection.HomeKey(6) | Out-Null
 		}

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.8
+
+- Speed up Go to Search Result by jumping directly to the reported Word page and visual line when they are already known.
+
 ## 0.4.7
 
 - Use the already-reported Word page and visual line as the anchor when going to a Word result, avoiding wrong jumps in documents with many repeated matches.
