@@ -731,6 +731,10 @@ class TextFinderDialog(wx.Dialog):
 		mainSizer.Add(wx.StaticText(self, label=_("Search &results:")), 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
 		self.resultsCtrl = wx.ListBox(self, style=wx.LB_SINGLE)
 		mainSizer.Add(self.resultsCtrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+		self.wordStatusLabel = wx.StaticText(self, label=_("Word location &status:"))
+		mainSizer.Add(self.wordStatusLabel, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+		self.wordStatusCtrl = wx.TextCtrl(self, value=_("Not started."), style=wx.TE_READONLY)
+		mainSizer.Add(self.wordStatusCtrl, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
 		buttonSizer = wx.BoxSizer(wx.HORIZONTAL)
 		self.searchButton = wx.Button(self, label=_("&Search"))
@@ -761,8 +765,14 @@ class TextFinderDialog(wx.Dialog):
 
 	def update_action_button_visibility(self):
 		is_file_search = Path(self.target).is_file()
+		is_word_file_search = is_file_search and Path(self.target).suffix.lower() == ".docx"
 		self.subfoldersCtrl.Show(not is_file_search)
-		self.goToResultButton.Show(is_file_search)
+		self.openFileButton.Show(not is_word_file_search)
+		self.openButton.Show(not is_word_file_search)
+		self.goToResultButton.Show(is_word_file_search)
+		show_word_status = self._has_docx_results(self.results)
+		self.wordStatusLabel.Show(show_word_status)
+		self.wordStatusCtrl.Show(show_word_status)
 		self.Layout()
 
 	def on_search(self, evt):
@@ -772,6 +782,8 @@ class TextFinderDialog(wx.Dialog):
 			return
 		self.searchButton.Disable()
 		self.resultsCtrl.Clear()
+		self.results = []
+		self.set_word_status(_("Not started."))
 		ui.message(_("Searching."))
 		options = SearchOptions(
 			query=query,
@@ -886,7 +898,7 @@ class TextFinderDialog(wx.Dialog):
 	def start_word_location_enrichment(self, results, generation):
 		docx_count = sum(1 for result in results if result.path.suffix.lower() == ".docx")
 		log_info("Text Finder getting Word locations for %d DOCX results in the background.", docx_count)
-		ui.message(_("Getting Word page and visual line numbers in the background."))
+		self.set_word_status(_("Getting Word page and visual line numbers for {total} results.").format(total=docx_count))
 		thread = threading.Thread(target=self.enrich_word_locations, args=(results, generation), daemon=True)
 		thread.start()
 
@@ -903,6 +915,8 @@ class TextFinderDialog(wx.Dialog):
 		word = None
 		try:
 			for path, indices in indices_by_path.items():
+				if not self.is_search_generation_current(generation):
+					return
 				try:
 					extracted_text = extract_text(path).text
 				except Exception:
@@ -913,6 +927,8 @@ class TextFinderDialog(wx.Dialog):
 				use_open_document_lookup = True
 				try:
 					for batch_indices in batched_items(indices, WORD_LOCATION_BATCH_SIZE):
+						if not self.is_search_generation_current(generation):
+							return
 						batch_results = [original_results[index] for index in batch_indices]
 						try:
 							locations = None
@@ -980,14 +996,25 @@ class TextFinderDialog(wx.Dialog):
 		if generation != self._search_generation:
 			return
 		if updated_total:
-			ui.message(_("Word page and visual line numbers ready for {count} results.").format(count=updated_total))
+			self.set_word_status(_("Word page and visual line numbers ready for {count} results.").format(count=updated_total))
 		elif docx_count:
-			ui.message(_("Word page and visual line numbers could not be added. Use Open File on one result to test Word directly."))
+			self.set_word_status(_("Word page and visual line numbers could not be added. Use Go to Search Result on one result to test Word directly."))
 
 	def announce_word_enrichment_progress(self, generation, updated_total, docx_count):
 		if generation != self._search_generation or not updated_total or updated_total >= docx_count:
 			return
-		ui.message(_("Word page and visual line numbers ready for {done} of {total} results.").format(done=updated_total, total=docx_count))
+		self.set_word_status(_("Word page and visual line numbers ready for {done} of {total} results.").format(done=updated_total, total=docx_count))
+
+	def set_word_status(self, message):
+		self.wordStatusCtrl.SetValue(message)
+
+	def cancel_word_location_enrichment(self):
+		self._search_generation += 1
+		self.set_word_status(_("Word page and visual line lookup stopped."))
+		self._clear_pending_indices(range(len(self.results)))
+
+	def is_search_generation_current(self, generation):
+		return generation == self._search_generation
 
 	def refresh_results_list(self):
 		selection = self.resultsCtrl.GetSelection()
@@ -1005,11 +1032,17 @@ class TextFinderDialog(wx.Dialog):
 			self.Destroy()
 			return
 		if key_code in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
-			self.open_selected_result()
+			self.activate_selected_result()
 			return
 		evt.Skip()
 
 	def on_open_result(self, evt):
+		self.activate_selected_result()
+
+	def activate_selected_result(self):
+		if Path(self.target).is_file() and Path(self.target).suffix.lower() == ".docx":
+			self.on_go_to_result(None)
+			return
 		self.open_selected_result()
 
 	def open_selected_result(self):
@@ -1045,6 +1078,7 @@ class TextFinderDialog(wx.Dialog):
 		if result.path.suffix.lower() != ".docx":
 			ui.message(_("Go to Search Result is available for Word documents."))
 			return
+		self.cancel_word_location_enrichment()
 		try:
 			extracted_text = extract_text(result.path).text
 		except Exception:

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.6
+
+- Show Word page and visual line lookup progress inside the main search dialog instead of announcing each batch separately.
+- For single Word-document searches, show Go to Search Result without the Open File or Open Result buttons.
+- Stop background Word page and visual line lookup when the user goes to a result.
+
 ## 0.4.5
 
 - Process Word page and visual line lookup in batches of 10 results, so large documents can update result locations progressively instead of failing all at once.
