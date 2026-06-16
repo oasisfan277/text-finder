@@ -919,13 +919,17 @@ class TextFinderDialog(wx.Dialog):
 		docx_count = sum(len(indices) for indices in indices_by_path.values())
 		total_docx_count = len(all_docx_indices)
 		counters = {"updated_total": 0}
-		# Reuse a single hidden Word instance for the whole run instead of starting
-		# and quitting Word once per file. Each document is walked in one forward
-		# pass (see collect_docx_visual_locations) rather than restarting Word's
-		# Find from the top for every batch, which is what made large documents
-		# (hundreds of matches) take minutes or never finish.
+		# Each document is walked in one forward pass (see
+		# collect_docx_visual_locations) rather than restarting Word's Find from the
+		# top for every batch, which is what made large documents take minutes or
+		# never finish. When the document is already open in Word (the common case
+		# for a single-file search) we read locations from that running instance via
+		# a Range, which leaves the user's cursor untouched and avoids Word's "file
+		# in use by another application" error that a second instance hits. Only
+		# documents that are not already open are loaded into a reused hidden
+		# instance.
 		uninitialize_com = initialize_com_for_thread()
-		word = None
+		hidden_word = None
 		try:
 			for path, indices in indices_by_path.items():
 				if not self.is_search_generation_current(generation):
@@ -965,14 +969,17 @@ class TextFinderDialog(wx.Dialog):
 						flush()
 
 				document = None
+				opened_hidden = False
 				try:
-					if word is None:
-						word = get_word_application(new_instance=True)
-						word.Visible = False
-					document = open_word_document_read_only(word, path)
-					document.Activate()
+					_running_word, document = get_running_word_document(path)
+					if document is None:
+						if hidden_word is None:
+							hidden_word = get_word_application(new_instance=True)
+							hidden_word.Visible = False
+						document = open_word_document_read_only(hidden_word, path)
+						opened_hidden = True
 					collect_docx_visual_locations(
-						word,
+						document,
 						results_for_path,
 						extracted_text,
 						on_result=on_result,
@@ -982,7 +989,7 @@ class TextFinderDialog(wx.Dialog):
 					log_exception("Text Finder could not enrich DOCX result locations in the background.")
 				finally:
 					flush()
-					if document is not None:
+					if opened_hidden and document is not None:
 						try:
 							document.Close(False)
 						except Exception:
@@ -994,9 +1001,9 @@ class TextFinderDialog(wx.Dialog):
 					if unhandled:
 						wx.CallAfter(self.clear_word_pending, generation, unhandled)
 		finally:
-			if word is not None:
+			if hidden_word is not None:
 				try:
-					word.Quit()
+					hidden_word.Quit()
 				except Exception:
 					log_exception("Text Finder could not close the hidden Word application.")
 			uninitialize_com()
@@ -1422,7 +1429,57 @@ $locations | ConvertTo-Json -Compress
 '''
 
 
-def collect_docx_visual_locations(word, results, extracted_text, on_result=None, should_continue=None):
+def get_active_word_application():
+	# Attach to a Word instance that is already running, without starting a new
+	# one. comtypes ships with NVDA; win32com is tried as a fallback.
+	try:
+		import comtypes.client
+
+		return comtypes.client.GetActiveObject("Word.Application")
+	except Exception:
+		pass
+	try:
+		import win32com.client
+
+		return win32com.client.GetActiveObject("Word.Application")
+	except Exception:
+		return None
+
+
+def get_running_word_document(path):
+	# Find the document already open in a running Word instance. OneDrive
+	# documents report a web URL for FullName, so match on the file name first
+	# and only fall back to the full path. Returns (word, document) or
+	# (None, None) when Word is not running or the document is not open.
+	word = get_active_word_application()
+	if word is None:
+		return None, None
+	target_name = Path(path).name.lower()
+	target_full = str(Path(path)).lower()
+	try:
+		documents = word.Documents
+		count = documents.Count
+	except Exception:
+		return None, None
+	for index in range(1, count + 1):
+		try:
+			document = documents.Item(index)
+		except Exception:
+			continue
+		try:
+			if str(document.Name).lower() == target_name:
+				return word, document
+		except Exception:
+			pass
+		try:
+			if str(document.FullName).lower() == target_full:
+				return word, document
+		except Exception:
+			pass
+	return None, None
+
+
+def collect_docx_visual_locations(document, results, extracted_text, on_result=None, should_continue=None):
 	# Walk the document forward once, mapping each result to the page and visual
 	# line Word reports. Results arrive in document order, so for a given match
 	# string the occurrences are reached in ascending order without restarting
@@ -1430,12 +1487,14 @@ def collect_docx_visual_locations(word, results, extracted_text, on_result=None,
 	# O(n^2) search into a single O(n) forward pass. MatchCase keeps Word's
 	# stepping aligned with the case-sensitive occurrence count below.
 	#
+	# The search runs on a Range, not the Selection, so reading locations from a
+	# document the user has open never moves their cursor or scrolls their view.
 	# on_result(local_index, location) is called for every result as it is
 	# resolved (location is None when Word could not reach it), letting the caller
 	# stream progress to the UI. should_continue() lets the caller abort the pass
 	# early, e.g. when the search has been superseded.
-	selection = word.Selection
-	find = selection.Find
+	search_range = document.Content
+	find = search_range.Find
 	find.ClearFormatting()
 	find.Forward = True
 	find.Wrap = 0
@@ -1453,7 +1512,9 @@ def collect_docx_visual_locations(word, results, extracted_text, on_result=None,
 			continue
 		occurrence = extracted_text[:result.start].count(matched_text) + 1
 		if matched_text != current_text:
-			selection.HomeKey(Unit=6)
+			# Collapse the range to the very start of the document so the next
+			# Execute searches the whole story from the top, like HomeKey would.
+			search_range.SetRange(0, 0)
 			find.Text = matched_text
 			current_text = matched_text
 			found_count = 0
@@ -1462,14 +1523,14 @@ def collect_docx_visual_locations(word, results, extracted_text, on_result=None,
 				break
 			found_count += 1
 			if found_count < occurrence:
-				selection.Collapse(0)
+				search_range.Collapse(0)
 		if found_count < occurrence:
 			if on_result is not None:
 				on_result(index, None)
 			continue
-		location = (selection.Information(3), selection.Information(10))
+		location = (search_range.Information(3), search_range.Information(10))
 		locations[index] = location
-		selection.Collapse(0)
+		search_range.Collapse(0)
 		if on_result is not None:
 			on_result(index, location)
 	return locations

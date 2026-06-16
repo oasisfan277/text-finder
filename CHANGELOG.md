@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.11
+
+- Fix page and visual line numbers staying blank ("Exact position in Open Result") when the document is already open in Word: the lookup now reads from the running Word instance instead of trying to open a second, hidden copy, which OneDrive and Word refuse with a "file in use by another application" error. The read uses a background Range, so it never moves the cursor or scrolls the open document.
+
 ## 0.4.10
 
 - Fix Word page and visual line numbers never appearing for documents with many matches: enrichment now walks each document in a single forward pass in a hidden Word instance instead of restarting Word's search from the top for every batch of 10 (and no longer launches a PowerShell process per batch), so large books resolve in seconds instead of stalling.
