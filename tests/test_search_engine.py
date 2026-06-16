@@ -22,6 +22,7 @@ from addon.globalPlugins.textFinder import (
 	file_type_is_selected,
 	format_result_for_list,
 	get_active_file_patterns,
+	collect_docx_visual_locations,
 	get_open_word_visual_locations,
 	get_word_active_document_path,
 	OPEN_WORD_LOCATION_SCRIPT,
@@ -63,6 +64,110 @@ class _NoProtectedViewWindows:
 
 
 
+
+
+class _FakeFind:
+	def __init__(self, selection):
+		self._selection = selection
+		self.Forward = True
+		self.Wrap = 0
+		self.MatchCase = True
+		self.Text = ""
+
+	def ClearFormatting(self):
+		pass
+
+	def Execute(self):
+		return self._selection._find_next(self.Text)
+
+
+class _FakeFindSelection:
+	# Emulates just enough of Word's Selection/Find for
+	# collect_docx_visual_locations: a forward Find over a string, with page and
+	# visual line derived from the match offset (page every 100 chars, line every
+	# 10). HomeKey calls are counted so tests can prove the document is walked in a
+	# single forward pass rather than restarted per match.
+	def __init__(self, text):
+		self._text = text
+		self._cursor = 0
+		self._match_start = 0
+		self._match_end = 0
+		self.Find = _FakeFind(self)
+		self.home_calls = 0
+
+	def HomeKey(self, Unit=None):
+		self.home_calls += 1
+		self._cursor = 0
+
+	def Collapse(self, direction):
+		self._cursor = self._match_end
+
+	def _find_next(self, needle):
+		if not needle:
+			return False
+		index = self._text.find(needle, self._cursor)
+		if index == -1:
+			return False
+		self._match_start = index
+		self._match_end = index + len(needle)
+		return True
+
+	def Information(self, kind):
+		if kind == 3:
+			return self._match_start // 100 + 1
+		if kind == 10:
+			return self._match_start // 10 + 1
+		return 0
+
+
+class _FakeFindWord:
+	def __init__(self, text):
+		self.Selection = _FakeFindSelection(text)
+
+
+def _result_at(start, length=3):
+	return SearchResult(path=Path("book.docx"), line=1, column=1, preview="", start=start, end=start + length)
+
+
+def test_collect_docx_visual_locations_single_forward_pass():
+	# "foo" occurs at offsets 0, 50, 150, 250 -> pages 1, 1, 2, 3.
+	text = "foo" + "." * 47 + "foo" + "." * 97 + "foo" + "." * 97 + "foo"
+	assert [m for m in (0, 50, 150, 250)] == [text.find("foo"), text.find("foo", 1), text.find("foo", 51), text.find("foo", 151)]
+	word = _FakeFindWord(text)
+	results = [_result_at(0), _result_at(50), _result_at(150), _result_at(250)]
+	progress = []
+	locations = collect_docx_visual_locations(word, results, text, on_result=lambda i, loc: progress.append((i, loc)))
+	assert locations == {0: (1, 1), 1: (1, 6), 2: (2, 16), 3: (3, 26)}
+	assert progress == [(0, (1, 1)), (1, (1, 6)), (2, (2, 16)), (3, (3, 26))]
+	# The same match string must be searched without ever restarting from the top.
+	assert word.Selection.home_calls == 1
+
+
+def test_collect_docx_visual_locations_reports_unreachable_result():
+	text = "foo" + "." * 97 + "foo"
+	word = _FakeFindWord(text)
+	# Last result points past the end of the text, so its match string is empty
+	# and Word cannot reach it; it should be reported as None, not skipped.
+	results = [_result_at(0), _result_at(100), _result_at(500)]
+	progress = []
+	locations = collect_docx_visual_locations(word, results, text, on_result=lambda i, loc: progress.append((i, loc)))
+	assert locations == {0: (1, 1), 1: (2, 11)}
+	assert progress[-1] == (2, None)
+
+
+def test_collect_docx_visual_locations_stops_when_cancelled():
+	text = "foo" + "." * 97 + "foo" + "." * 97 + "foo"
+	word = _FakeFindWord(text)
+	results = [_result_at(0), _result_at(100), _result_at(200)]
+	seen = []
+
+	def should_continue():
+		# Allow the first result, then cancel.
+		return len(seen) < 1
+
+	locations = collect_docx_visual_locations(word, results, text, on_result=lambda i, loc: seen.append(i), should_continue=should_continue)
+	assert locations == {0: (1, 1)}
+	assert seen == [0]
 
 
 def test_open_word_document_read_only_uses_read_only_flags():

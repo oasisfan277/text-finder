@@ -918,9 +918,12 @@ class TextFinderDialog(wx.Dialog):
 			indices_by_path.setdefault(result.path, []).append(index)
 		docx_count = sum(len(indices) for indices in indices_by_path.values())
 		total_docx_count = len(all_docx_indices)
-		updated_total = 0
-		# Reuse a single hidden Word instance for the whole batch instead of
-		# starting and quitting Word once per file.
+		counters = {"updated_total": 0}
+		# Reuse a single hidden Word instance for the whole run instead of starting
+		# and quitting Word once per file. Each document is walked in one forward
+		# pass (see collect_docx_visual_locations) rather than restarting Word's
+		# Find from the top for every batch, which is what made large documents
+		# (hundreds of matches) take minutes or never finish.
 		uninitialize_com = initialize_com_for_thread()
 		word = None
 		try:
@@ -933,49 +936,63 @@ class TextFinderDialog(wx.Dialog):
 					log_exception("Text Finder could not extract DOCX text before enriching result locations.")
 					wx.CallAfter(self.clear_word_pending, generation, list(indices))
 					continue
-				document = None
-				use_open_document_lookup = True
-				try:
-					for batch_indices in batched_items(indices, WORD_LOCATION_BATCH_SIZE):
-						if not self.is_search_generation_current(generation):
-							return
-						batch_results = [original_results[index] for index in batch_indices]
-						try:
-							locations = None
-							if use_open_document_lookup:
-								locations = get_open_word_visual_locations(path, batch_results, extracted_text)
-								if not self.is_search_generation_current(generation):
-									return
-								if locations is None:
-									use_open_document_lookup = False
-							if locations is None:
-								if not self.is_search_generation_current(generation):
-									return
-								if word is None:
-									word = get_word_application(new_instance=True)
-									word.Visible = False
-								if document is None:
-									document = open_word_document_read_only(word, path)
-								document.Activate()
-								locations = collect_docx_visual_locations(word, batch_results, extracted_text)
-						except Exception:
-							log_exception("Text Finder could not enrich a DOCX result batch in the background.")
-							wx.CallAfter(self.clear_word_pending, generation, list(batch_indices))
-							continue
-						updates = {}
-						for local_index, location in locations.items():
-							updates[batch_indices[local_index]] = location
+				results_for_path = [original_results[index] for index in indices]
+				# Buffer per-result outcomes and flush them to the list in chunks so
+				# results fill in progressively while the single forward pass runs.
+				pending = {"updates": {}, "cleared": []}
+				handled = set()
+
+				def flush():
+					if not pending["updates"] and not pending["cleared"]:
+						return
+					updates = pending["updates"]
+					cleared = pending["cleared"]
+					counters["updated_total"] += len(updates)
+					wx.CallAfter(self.apply_word_locations, generation, updates, cleared)
+					wx.CallAfter(self.announce_word_enrichment_progress, generation, counters["updated_total"], docx_count, total_docx_count)
+					pending["updates"] = {}
+					pending["cleared"] = []
+
+				def on_result(local_index, location, _indices=indices):
+					global_index = _indices[local_index]
+					handled.add(global_index)
+					if location is None:
 						# Any result Word did not report stops loading and falls back to Open Result.
-						cleared = [index for local_index, index in enumerate(batch_indices) if local_index not in locations]
-						updated_total += len(updates)
-						wx.CallAfter(self.apply_word_locations, generation, updates, cleared)
-						wx.CallAfter(self.announce_word_enrichment_progress, generation, updated_total, docx_count, total_docx_count)
+						pending["cleared"].append(global_index)
+					else:
+						pending["updates"][global_index] = location
+					if len(pending["updates"]) + len(pending["cleared"]) >= WORD_LOCATION_BATCH_SIZE:
+						flush()
+
+				document = None
+				try:
+					if word is None:
+						word = get_word_application(new_instance=True)
+						word.Visible = False
+					document = open_word_document_read_only(word, path)
+					document.Activate()
+					collect_docx_visual_locations(
+						word,
+						results_for_path,
+						extracted_text,
+						on_result=on_result,
+						should_continue=lambda: self.is_search_generation_current(generation),
+					)
+				except Exception:
+					log_exception("Text Finder could not enrich DOCX result locations in the background.")
 				finally:
+					flush()
 					if document is not None:
 						try:
 							document.Close(False)
 						except Exception:
 							log_exception("Text Finder could not close the hidden Word document.")
+				# Results the pass never reached (a Word error part-way through) stop
+				# loading so they fall back to Open Result instead of spinning forever.
+				if self.is_search_generation_current(generation):
+					unhandled = [index for index in indices if index not in handled]
+					if unhandled:
+						wx.CallAfter(self.clear_word_pending, generation, unhandled)
 		finally:
 			if word is not None:
 				try:
@@ -983,8 +1000,8 @@ class TextFinderDialog(wx.Dialog):
 				except Exception:
 					log_exception("Text Finder could not close the hidden Word application.")
 			uninitialize_com()
-		log_info("Text Finder Word location lookup finished. updated=%d of docx=%d", updated_total, docx_count)
-		wx.CallAfter(self.announce_word_enrichment_done, generation, updated_total, docx_count)
+		log_info("Text Finder Word location lookup finished. updated=%d of docx=%d", counters["updated_total"], docx_count)
+		wx.CallAfter(self.announce_word_enrichment_done, generation, counters["updated_total"], docx_count)
 
 	def apply_word_locations(self, generation, updates, cleared):
 		if generation != self._search_generation:
@@ -1405,13 +1422,18 @@ $locations | ConvertTo-Json -Compress
 '''
 
 
-def collect_docx_visual_locations(word, results, extracted_text):
+def collect_docx_visual_locations(word, results, extracted_text, on_result=None, should_continue=None):
 	# Walk the document forward once, mapping each result to the page and visual
 	# line Word reports. Results arrive in document order, so for a given match
 	# string the occurrences are reached in ascending order without restarting
 	# from the top of the document for every match. This turns a per-match
 	# O(n^2) search into a single O(n) forward pass. MatchCase keeps Word's
 	# stepping aligned with the case-sensitive occurrence count below.
+	#
+	# on_result(local_index, location) is called for every result as it is
+	# resolved (location is None when Word could not reach it), letting the caller
+	# stream progress to the UI. should_continue() lets the caller abort the pass
+	# early, e.g. when the search has been superseded.
 	selection = word.Selection
 	find = selection.Find
 	find.ClearFormatting()
@@ -1422,8 +1444,12 @@ def collect_docx_visual_locations(word, results, extracted_text):
 	current_text = None
 	found_count = 0
 	for index, result in enumerate(results):
+		if should_continue is not None and not should_continue():
+			break
 		matched_text = extracted_text[result.start:result.end]
 		if not matched_text:
+			if on_result is not None:
+				on_result(index, None)
 			continue
 		occurrence = extracted_text[:result.start].count(matched_text) + 1
 		if matched_text != current_text:
@@ -1438,9 +1464,14 @@ def collect_docx_visual_locations(word, results, extracted_text):
 			if found_count < occurrence:
 				selection.Collapse(0)
 		if found_count < occurrence:
+			if on_result is not None:
+				on_result(index, None)
 			continue
-		locations[index] = (selection.Information(3), selection.Information(10))
+		location = (selection.Information(3), selection.Information(10))
+		locations[index] = location
 		selection.Collapse(0)
+		if on_result is not None:
+			on_result(index, location)
 	return locations
 
 

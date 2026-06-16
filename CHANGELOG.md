@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.10
+
+- Fix Word page and visual line numbers never appearing for documents with many matches: enrichment now walks each document in a single forward pass in a hidden Word instance instead of restarting Word's search from the top for every batch of 10 (and no longer launches a PowerShell process per batch), so large books resolve in seconds instead of stalling.
+- Speed up Go to Search Result indirectly: because page anchors now fill in reliably, the jump uses the direct page anchor instead of falling back to stepping through hundreds of matches.
+
 ## 0.4.9
 
 - Keep Go to Search Result on the intended Word page by searching only within the reported page instead of moving by visual-line counts.
