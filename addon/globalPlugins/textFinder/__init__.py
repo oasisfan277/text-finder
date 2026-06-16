@@ -73,6 +73,7 @@ except NameError:
 
 
 CONFIG_SECTION = "textFinder"
+WORD_LOCATION_BATCH_SIZE = 10
 
 
 def _initialize_config():
@@ -904,32 +905,47 @@ class TextFinderDialog(wx.Dialog):
 			for path, indices in indices_by_path.items():
 				try:
 					extracted_text = extract_text(path).text
-					path_results = [original_results[index] for index in indices]
-					locations = get_open_word_visual_locations(path, path_results, extracted_text)
-					if locations is None:
-						if word is None:
-							word = get_word_application(new_instance=True)
-							word.Visible = False
-						document = open_word_document_read_only(word, path)
-						try:
-							document.Activate()
-							locations = collect_docx_visual_locations(word, path_results, extracted_text)
-						finally:
-							try:
-								document.Close(False)
-							except Exception:
-								log_exception("Text Finder could not close the hidden Word document.")
 				except Exception:
-					log_exception("Text Finder could not enrich DOCX result locations in the background.")
+					log_exception("Text Finder could not extract DOCX text before enriching result locations.")
 					wx.CallAfter(self.clear_word_pending, generation, list(indices))
 					continue
-				updates = {}
-				for local_index, location in locations.items():
-					updates[indices[local_index]] = location
-				# Any result Word did not report stops loading and falls back to Open Result.
-				cleared = [index for local_index, index in enumerate(indices) if local_index not in locations]
-				updated_total += len(updates)
-				wx.CallAfter(self.apply_word_locations, generation, updates, cleared)
+				document = None
+				use_open_document_lookup = True
+				try:
+					for batch_indices in batched_items(indices, WORD_LOCATION_BATCH_SIZE):
+						batch_results = [original_results[index] for index in batch_indices]
+						try:
+							locations = None
+							if use_open_document_lookup:
+								locations = get_open_word_visual_locations(path, batch_results, extracted_text)
+								if locations is None:
+									use_open_document_lookup = False
+							if locations is None:
+								if word is None:
+									word = get_word_application(new_instance=True)
+									word.Visible = False
+								if document is None:
+									document = open_word_document_read_only(word, path)
+								document.Activate()
+								locations = collect_docx_visual_locations(word, batch_results, extracted_text)
+						except Exception:
+							log_exception("Text Finder could not enrich a DOCX result batch in the background.")
+							wx.CallAfter(self.clear_word_pending, generation, list(batch_indices))
+							continue
+						updates = {}
+						for local_index, location in locations.items():
+							updates[batch_indices[local_index]] = location
+						# Any result Word did not report stops loading and falls back to Open Result.
+						cleared = [index for local_index, index in enumerate(batch_indices) if local_index not in locations]
+						updated_total += len(updates)
+						wx.CallAfter(self.apply_word_locations, generation, updates, cleared)
+						wx.CallAfter(self.announce_word_enrichment_progress, generation, updated_total, docx_count)
+				finally:
+					if document is not None:
+						try:
+							document.Close(False)
+						except Exception:
+							log_exception("Text Finder could not close the hidden Word document.")
 		finally:
 			if word is not None:
 				try:
@@ -967,6 +983,11 @@ class TextFinderDialog(wx.Dialog):
 			ui.message(_("Word page and visual line numbers ready for {count} results.").format(count=updated_total))
 		elif docx_count:
 			ui.message(_("Word page and visual line numbers could not be added. Use Open File on one result to test Word directly."))
+
+	def announce_word_enrichment_progress(self, generation, updated_total, docx_count):
+		if generation != self._search_generation or not updated_total or updated_total >= docx_count:
+			return
+		ui.message(_("Word page and visual line numbers ready for {done} of {total} results.").format(done=updated_total, total=docx_count))
 
 	def refresh_results_list(self):
 		selection = self.resultsCtrl.GetSelection()
@@ -1341,6 +1362,12 @@ def collect_docx_visual_locations(word, results, extracted_text):
 		locations[index] = (selection.Information(3), selection.Information(10))
 		selection.Collapse(0)
 	return locations
+
+
+def batched_items(items, size):
+	for start in range(0, len(items), size):
+		yield items[start:start + size]
+
 
 def open_result_file(result, extracted_text=None):
 	log_info("Text Finder opening original file with a %s extension.", result.path.suffix.lower() or "no-extension")

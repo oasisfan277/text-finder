@@ -15,6 +15,8 @@ from addon.globalPlugins.textFinder.search_engine import (
 	preview_for_span,
 )
 from addon.globalPlugins.textFinder import (
+	WORD_LOCATION_BATCH_SIZE,
+	batched_items,
 	file_type_choice_label,
 	file_type_is_selected,
 	format_result_for_list,
@@ -104,6 +106,15 @@ def test_open_word_location_script_uses_running_word_document():
 	assert "selectResult" in OPEN_WORD_LOCATION_SCRIPT
 	assert "$payload.fullName" in OPEN_WORD_LOCATION_SCRIPT
 	assert "AppActivate" in OPEN_WORD_LOCATION_SCRIPT
+
+
+def test_word_location_batch_size_is_ten_results():
+	assert WORD_LOCATION_BATCH_SIZE == 10
+	assert list(batched_items(list(range(25)), WORD_LOCATION_BATCH_SIZE)) == [
+		list(range(10)),
+		list(range(10, 20)),
+		list(range(20, 25)),
+	]
 
 
 def test_selected_file_types_are_ordered_first_when_search_all_is_off():

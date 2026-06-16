@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.5
+
+- Process Word page and visual line lookup in batches of 10 results, so large documents can update result locations progressively instead of failing all at once.
+
 ## 0.4.4
 
 - Hide the Include subfolders checkbox when Text Finder is searching inside a single file.
