@@ -224,8 +224,8 @@ def test_open_word_location_script_uses_running_word_document():
 	assert "$currentPage -gt $targetPage" in OPEN_WORD_LOCATION_SCRIPT
 
 
-def test_word_auto_location_limit_is_fifty_results():
-	assert WORD_AUTO_LOCATION_LIMIT == 50
+def test_word_auto_location_limit_covers_large_documents():
+	assert WORD_AUTO_LOCATION_LIMIT == 2000
 
 
 def test_word_location_batch_size_is_ten_results():

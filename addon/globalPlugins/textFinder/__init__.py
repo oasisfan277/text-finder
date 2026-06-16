@@ -74,7 +74,11 @@ except NameError:
 
 CONFIG_SECTION = "textFinder"
 WORD_LOCATION_BATCH_SIZE = 10
-WORD_AUTO_LOCATION_LIMIT = 50
+# Upper bound on how many Word results get page and visual line numbers filled
+# in automatically. The lookup is now a single forward pass, so a few thousand
+# matches resolve quickly; this only guards against pathological searches (e.g.
+# a single common letter) tying up Word for a long time in the background.
+WORD_AUTO_LOCATION_LIMIT = 2000
 
 
 def _initialize_config():

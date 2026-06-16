@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.12
+
+- Fill in page and visual line numbers for far more results. The automatic lookup was capped at the first 50 Word matches as a workaround for the old slow lookup; now that it is a single fast pass, the cap is raised to 2000 so whole-document searches (hundreds of matches) get located instead of stopping part way down the list.
+
 ## 0.4.11
 
 - Fix page and visual line numbers staying blank ("Exact position in Open Result") when the document is already open in Word: the lookup now reads from the running Word instance instead of trying to open a second, hidden copy, which OneDrive and Word refuse with a "file in use by another application" error. The read uses a background Range, so it never moves the cursor or scrolls the open document.
