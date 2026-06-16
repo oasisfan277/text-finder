@@ -759,8 +759,9 @@ class TextFinderDialog(wx.Dialog):
 		self.update_action_button_visibility()
 
 	def update_action_button_visibility(self):
-		show_go_to_result = Path(self.target).is_file()
-		self.goToResultButton.Show(show_go_to_result)
+		is_file_search = Path(self.target).is_file()
+		self.subfoldersCtrl.Show(not is_file_search)
+		self.goToResultButton.Show(is_file_search)
 		self.Layout()
 
 	def on_search(self, evt):
@@ -775,7 +776,7 @@ class TextFinderDialog(wx.Dialog):
 			query=query,
 			whole_word=self.exactWholeWordCtrl.GetValue(),
 			case_sensitive=self.caseCtrl.GetValue(),
-			include_subfolders=self.subfoldersCtrl.GetValue(),
+			include_subfolders=False if Path(self.target).is_file() else self.subfoldersCtrl.GetValue(),
 			file_patterns=get_active_file_patterns(),
 			report_page_numbers=self.reportPagesCtrl.GetValue(),
 		)

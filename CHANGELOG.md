@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.4
+
+- Hide the Include subfolders checkbox when Text Finder is searching inside a single file.
+
 ## 0.4.3
 
 - Open Word results through Windows' normal file opening route first, then attach to Word and move to the result, preserving Word's usual AutoSave and collaboration behavior more reliably.
